@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMeta, getTeamSummary, getTeamFilterOptions, getOpenFilterOptions, getOpenSummary, getOpenNearDeadlineDetails } from '../../../lib/dashboard';
+import { getFilteredPeriodSummary, getActivityDetails, getDimensionDetails, getRepeatedCallDetails, getAdvisorTrend } from '../../../lib/period';
 
 export const runtime='nodejs';
 
@@ -9,6 +10,11 @@ const handlers:Record<string,(args:any[])=>Promise<any>>={
  getOpenFilteredSummary: async ([filters])=>getOpenSummary(filters||{}),
  getOpenFilterOptions: async ()=>getOpenFilterOptions(),
  getOpenNearDeadlineDetails: async ([leadType,owner,filters])=>getOpenNearDeadlineDetails(leadType,owner||'',filters||{}),
+ getFilteredPeriodSummary: async ([period,filters])=>getFilteredPeriodSummary(period,filters||{}),
+ getActivityDetails: async ([period,type,user])=>getActivityDetails(period,type,user),
+ getDimensionDetails: async ([period,source,field,value])=>getDimensionDetails(period,source,field,value),
+ getRepeatedCallDetails: async ([period])=>getRepeatedCallDetails(period),
+ getAdvisorTrend: async ([period,advisor])=>getAdvisorTrend(period,advisor),
  getDashboardMeta: async ()=>getMeta(),
 };
 
