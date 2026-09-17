@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMeta, getTeamSummary, getTeamFilterOptions, getOpenFilterOptions, getOpenSummary, getOpenNearDeadlineDetails } from '../../../lib/dashboard';
 import { getFilteredPeriodSummary, getActivityDetails, getDimensionDetails, getRepeatedCallDetails, getAdvisorTrend } from '../../../lib/period';
+import { getOpenLeadDetails } from '../../../lib/open-details';
+import { getDashboardBootstrap } from '../../../lib/bootstrap';
 
 export const runtime='nodejs';
 
 const handlers:Record<string,(args:any[])=>Promise<any>>={
+ getDashboardBootstrap: async ()=>getDashboardBootstrap(),
  getTeamFilteredSummary: async ([filters])=>getTeamSummary(filters||{}),
  getTeamFilterOptions: async ()=>getTeamFilterOptions(),
  getOpenFilteredSummary: async ([filters])=>getOpenSummary(filters||{}),
  getOpenFilterOptions: async ()=>getOpenFilterOptions(),
+ getOpenLeadDetails: async ([field,value])=>getOpenLeadDetails(field,value),
  getOpenNearDeadlineDetails: async ([leadType,owner,filters])=>getOpenNearDeadlineDetails(leadType,owner||'',filters||{}),
  getFilteredPeriodSummary: async ([period,filters])=>getFilteredPeriodSummary(period,filters||{}),
  getActivityDetails: async ([period,type,user])=>getActivityDetails(period,type,user),
