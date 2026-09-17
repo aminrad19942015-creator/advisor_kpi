@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMeta, getTeamSummary, getTeamFilterOptions, getOpenFilterOptions, getOpenSummary, getOpenNearDeadlineDetails } from '../../../lib/dashboard';
 import { getFilteredPeriodSummary, getActivityDetails, getDimensionDetails, getRepeatedCallDetails, getAdvisorTrend } from '../../../lib/period';
-import { getOpenLeadDetails } from '../../../lib/open-details';
 import { getDashboardBootstrap } from '../../../lib/bootstrap';
+import { getOpenLeadDetails } from '../../../lib/open-detail';
 
 export const runtime='nodejs';
 
