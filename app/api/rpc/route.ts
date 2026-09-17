@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMeta, getTeamSummary, getTeamFilterOptions, getOpenFilterOptions, getOpenNearDeadlineDetails } from '../../../lib/dashboard';
+import { getMeta, getTeamSummary, getTeamFilterOptions, getOpenFilterOptions, getOpenSummary, getOpenNearDeadlineDetails } from '../../../lib/dashboard';
 
 export const runtime='nodejs';
 
 const handlers:Record<string,(args:any[])=>Promise<any>>={
  getTeamFilteredSummary: async ([filters])=>getTeamSummary(filters||{}),
  getTeamFilterOptions: async ()=>getTeamFilterOptions(),
+ getOpenFilteredSummary: async ([filters])=>getOpenSummary(filters||{}),
  getOpenFilterOptions: async ()=>getOpenFilterOptions(),
  getOpenNearDeadlineDetails: async ([leadType,owner,filters])=>getOpenNearDeadlineDetails(leadType,owner||'',filters||{}),
  getDashboardMeta: async ()=>getMeta(),
