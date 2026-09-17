@@ -4,11 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>داشبورد تعاملی عملکرد واحد مشاورین</title>
-<!-- Production: Turso-backed. No Google Drive data dependency. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard.css">
+<link rel="stylesheet" href="/dashboard-1.css">
+<link rel="stylesheet" href="/dashboard-2.css">
+<link rel="stylesheet" href="/dashboard-3.css">
+<link rel="stylesheet" href="/dashboard-4.css">
+<link rel="stylesheet" href="/dashboard-5.css">
 </head>
 <body>
 <div id="loadingScreen" class="loading-screen">
@@ -18,7 +21,6 @@
     <p>داده‌های مدیریتی از پایگاه داده دریافت می‌شوند...</p>
   </div>
 </div>
-
 <div class="app">
 <aside class="sidebar">
   <div class="brand"><div class="logo">م</div><div><h1>واحد مشاورین</h1><small>داشبورد مدیریتی</small></div></div>
@@ -28,16 +30,14 @@
   <button class="nav-item" data-page="dailyPage">▣ فعالیت دیروز</button>
   <button class="nav-item" data-page="weeklyPage">▤ فعالیت هفته</button>
   <button class="nav-item" data-page="monthlyPage">▥ فعالیت ماهانه</button>
-
   <div class="nav-title">منبع داده</div>
   <div class="data-box online-source">
     <h3>پایگاه داده آنلاین</h3>
-    <p>داده‌ها از Turso خوانده می‌شوند. برای بروزرسانی داده‌ها، فایل‌های Excel محلی را جایگزین و Sync Dashboard را اجرا کنید.</p>
+    <p>داده‌ها از Turso خوانده می‌شوند.</p>
     <div class="sync-line"><span>آخرین همگام‌سازی</span><b id="lastSyncText">—</b></div>
     <div class="sync-line"><span>نسخه داده</span><b id="dataVersionText">—</b></div>
   </div>
 </aside>
-
 <main class="main">
 <section id="teamPage" class="page active"></section>
 <section id="openPage" class="page"></section>
@@ -46,9 +46,11 @@
 <section id="monthlyPage" class="page"></section>
 </main>
 </div>
-
 <div class="toast" id="toast"></div>
-
-<script src="/dashboard.js" defer></script>
+<script src="/dashboard-1.js"></script>
+<script src="/dashboard-2.js"></script>
+<script src="/dashboard-3.js"></script>
+<script src="/dashboard-4.js"></script>
+<script src="/dashboard-5.js"></script>
 </body>
 </html>
