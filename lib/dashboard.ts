@@ -50,6 +50,35 @@ export async function getOpenFilterOptions(){
  return {advisor:v(0),teamLead:v(1),team:v(2),personUnit:v(3),leadType:v(4),nextCallReason:['بدون تسک',...v(5)],customerRank:v(6),campaign:v(7),source:v(8),lastStatus:v(9)};
 }
 
+export async function getOpenSummary(filters:any={}){
+ const allArgs:any[]=[];let allWhere=' WHERE 1=1';
+ allWhere+=sqlIn('o.owner',norm(filters.advisor),allArgs);
+ allWhere+=sqlIn('o.lead_type',norm(filters.leadType),allArgs);
+ allWhere+=sqlIn('o.customer_rank',norm(filters.customerRank),allArgs);
+ allWhere+=sqlIn('o.campaign',norm(filters.campaign),allArgs);
+ allWhere+=sqlIn('o.last_status',norm(filters.lastStatus),allArgs);
+ allWhere+=sqlIn('o.source',norm(filters.source),allArgs);
+ const teamLeads=norm(filters.teamLead),teams=norm(filters.team),personUnits=norm(filters.personUnit);
+ if(teamLeads.length||teams.length||personUnits.length){const pArgs:any[]=[];let pSql='SELECT name FROM team_members WHERE 1=1';pSql+=sqlIn('team_lead',teamLeads,pArgs);pSql+=sqlIn('team',teams,pArgs);pSql+=sqlIn('business_unit',personUnits,pArgs);allWhere+=` AND o.owner IN (${pSql})`;allArgs.push(...pArgs)}
+ const reasons=norm(filters.nextCallReason);
+ if(reasons.length){const hasBlank=reasons.includes('بدون تسک');const normal=reasons.filter((x:any)=>x!=='بدون تسک');const parts:string[]=[];if(normal.length){const qs=normal.map((v:any)=>{allArgs.push(v);return '?'}).join(',');parts.push(`o.next_call_reason IN (${qs})`)}if(hasBlank)parts.push("TRIM(COALESCE(o.next_call_reason,''))=''");if(parts.length)allWhere+=' AND ('+parts.join(' OR ')+')'}
+ const age=filters.age||'';if(age==='0-3')allWhere+=' AND o.age_days BETWEEN 0 AND 3';if(age==='4-7')allWhere+=' AND o.age_days BETWEEN 4 AND 7';if(age==='8-14')allWhere+=' AND o.age_days BETWEEN 8 AND 14';if(age==='15-30')allWhere+=' AND o.age_days BETWEEN 15 AND 30';if(age==='31+')allWhere+=' AND o.age_days >= 31';
+ const args:any[]=[];let join=' FROM open_leads o INNER JOIN team_members t ON t.name=o.owner WHERE 1=1';
+ join+=sqlIn('o.owner',norm(filters.advisor),args);join+=sqlIn('t.team_lead',teamLeads,args);join+=sqlIn('t.team',teams,args);join+=sqlIn('t.business_unit',personUnits,args);join+=sqlIn('o.lead_type',norm(filters.leadType),args);join+=sqlIn('o.customer_rank',norm(filters.customerRank),args);join+=sqlIn('o.campaign',norm(filters.campaign),args);join+=sqlIn('o.last_status',norm(filters.lastStatus),args);join+=sqlIn('o.source',norm(filters.source),args);
+ if(reasons.length){const hasBlank=reasons.includes('بدون تسک');const normal=reasons.filter((x:any)=>x!=='بدون تسک');const parts:string[]=[];if(normal.length){const qs=normal.map((v:any)=>{args.push(v);return '?'}).join(',');parts.push(`o.next_call_reason IN (${qs})`)}if(hasBlank)parts.push("TRIM(COALESCE(o.next_call_reason,''))=''");if(parts.length)join+=' AND ('+parts.join(' OR ')+')'}
+ if(age==='0-3')join+=' AND o.age_days BETWEEN 0 AND 3';if(age==='4-7')join+=' AND o.age_days BETWEEN 4 AND 7';if(age==='8-14')join+=' AND o.age_days BETWEEN 8 AND 14';if(age==='15-30')join+=' AND o.age_days BETWEEN 15 AND 30';if(age==='31+')join+=' AND o.age_days >= 31';
+ const stmts:any[]=[
+  {sql:`SELECT COUNT(*) AS allTotal,SUM(CASE WHEN TRIM(COALESCE(o.business_unit,''))='' THEN 1 ELSE 0 END) AS unassigned FROM open_leads o ${allWhere}`,args:allArgs},
+  {sql:`SELECT COUNT(*) AS total,COUNT(DISTINCT o.owner) AS owners,MAX(o.age_days) AS oldest,SUM(CASE WHEN TRIM(COALESCE(o.lead_type,''))='حقیقی' AND o.age_days BETWEEN 15 AND 18 THEN 1 ELSE 0 END) AS nearDeadlineReal,SUM(CASE WHEN TRIM(COALESCE(o.lead_type,''))='حقوقی' AND o.age_days BETWEEN 57 AND 60 THEN 1 ELSE 0 END) AS nearDeadlineLegal ${join}`,args},
+  {sql:`SELECT o.owner AS name,COALESCE(t.role,'') role,COALESCE(t.team_lead,'') teamLead,COALESCE(t.team,'') team,COUNT(*) count,MAX(o.age_days) oldest,SUM(CASE WHEN TRIM(COALESCE(o.lead_type,''))='حقیقی' AND o.age_days BETWEEN 15 AND 18 THEN 1 ELSE 0 END) AS nearDeadlineReal,SUM(CASE WHEN TRIM(COALESCE(o.lead_type,''))='حقوقی' AND o.age_days BETWEEN 57 AND 60 THEN 1 ELSE 0 END) AS nearDeadlineLegal ${join} GROUP BY o.owner,t.role,t.team_lead,t.team ORDER BY count DESC`,args}
+ ];
+ const dims:[string,string,string?][]=[['businessUnit','o.business_unit'],['leadType','o.lead_type'],['nextCallReason','o.next_call_reason','بدون تسک'],['customerRank','o.customer_rank'],['campaign','o.campaign'],['source','o.source'],['sourceSoftware','o.source_software'],['lastStatus','o.last_status']];
+ for(const [,col,blank] of dims)stmts.push({sql:`SELECT COALESCE(NULLIF(${col},''),?) label,COUNT(*) count ${join} GROUP BY label ORDER BY count DESC`,args:[blank||'بدون مقدار',...args]});
+ const r=await tursoBatch(stmts);
+ const dimensions:any={};dims.forEach((d,i)=>dimensions[d[0]]=pairs(r[3+i],'label','count'));
+ return {kpis:{...first(r[1]),...first(r[0])},advisors:r[2],dimensions};
+}
+
 export async function getOpenNearDeadlineDetails(leadType:string,owner:string,filters:any={}){
  if(!['حقیقی','حقوقی'].includes(leadType))throw new Error('نوع لید برای سررسید نامعتبر است.');
  const min=leadType==='حقیقی'?15:57,max=leadType==='حقیقی'?18:60,args:any[]=[leadType,min,max];
