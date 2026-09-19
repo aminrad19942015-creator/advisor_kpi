@@ -57,15 +57,14 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
   {key:'oppByAdvisor',sql:`SELECT creator name,SUM(CASE WHEN registration_type='OPP' THEN 1 ELSE 0 END) opps FROM ${O}${ow.where} AND COALESCE(creator,'')<>'' GROUP BY creator`,args:ow.args},
   {key:'callByAdvisor',sql:`SELECT user name,COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C}${cw.where} AND COALESCE(user,'')<>'' GROUP BY user`,args:cw.args},
   {key:'ticketByAdvisor',sql:`SELECT owner name,COUNT(*) tickets FROM ${T}${tw.where} AND COALESCE(owner,'')<>'' GROUP BY owner`,args:tw.args},
-  {key:'attendanceByAdvisor',sql:`SELECT name,COUNT(DISTINCT day) attendanceDays FROM (
-    SELECT owner name,date(last_modified_date) day FROM ${L}${alw.where} AND COALESCE(owner,'')<>'' AND last_modified_date<>''
-    UNION
-    SELECT creator name,date(created_date) day FROM ${O}${aow.where} AND COALESCE(creator,'')<>'' AND created_date<>''
-    UNION
-    SELECT user name,date(start_date) day FROM ${C}${acw.where} AND COALESCE(user,'')<>'' AND start_date<>''
-    UNION
-    SELECT owner name,date(closed_at) day FROM ${T}${atw.where} AND COALESCE(owner,'')<>'' AND closed_at<>''
-  ) WHERE day IS NOT NULL GROUP BY name`,args:[...alw.args,...aow.args,...acw.args,...atw.args]},
+  {key:'attendanceByAdvisor',sql:`SELECT name,COUNT(*) attendanceDays FROM (
+    SELECT user name,date(start_date) day
+    FROM ${C}${acw.where}
+      AND COALESCE(user,'')<>''
+      AND start_date<>''
+    GROUP BY user,date(start_date)
+    HAVING COUNT(*)>=5
+  ) GROUP BY name`,args:acw.args},
   {key:'allTeamMembers',sql:'SELECT name,team_lead teamLead,team,role FROM team_members'},
   {key:'leadState',sql:`SELECT COALESCE(NULLIF(last_status,''),'بدون مقدار') label,COUNT(*) count FROM ${L}${lw.where} GROUP BY label ORDER BY count DESC`,args:lw.args},
   {key:'rank',sql:`SELECT COALESCE(NULLIF(customer_rank,''),'بدون مقدار') label,COUNT(*) count FROM ${L}${lw.where} GROUP BY label ORDER BY count DESC`,args:lw.args},
