@@ -91,20 +91,20 @@ function chart(rows){
 const filterState={
   team:{search:'',teamLead:[],team:[],gender:[],role:[],businessUnit:[]},
   open:{advisor:[],teamLead:[],team:[],personUnit:[],age:'',leadType:[],nextCallReason:[],customerRank:[],campaign:[],source:[],lastStatus:[]},
-  daily:{advisor:[],teamLead:[],team:[],role:[]},
-  weekly:{advisor:[],teamLead:[],team:[],role:[]},
-  monthly:{advisor:[],teamLead:[],team:[],role:[]}
+  daily:{advisor:[],teamLead:[],team:[],role:[],campaign:[]},
+  weekly:{advisor:[],teamLead:[],team:[],role:[],campaign:[]},
+  monthly:{advisor:[],teamLead:[],team:[],role:[],campaign:[]}
 };
-let filterOptions={team:{},open:{}};
+let filterOptions={team:{},open:{},periodCampaign:{daily:[],weekly:[],monthly:[]}};
 
 // Default state is intentionally empty = "همه".
 // No filter should be selected automatically on first load.
 function resetAllFilterState(){
   filterState.team={search:'',teamLead:[],team:[],gender:[],role:[],businessUnit:[]};
   filterState.open={advisor:[],teamLead:[],team:[],personUnit:[],age:'',leadType:[],nextCallReason:[],customerRank:[],campaign:[],source:[],lastStatus:[]};
-  filterState.daily={advisor:[],teamLead:[],team:[],role:[]};
-  filterState.weekly={advisor:[],teamLead:[],team:[],role:[]};
-  filterState.monthly={advisor:[],teamLead:[],team:[],role:[]};
+  filterState.daily={advisor:[],teamLead:[],team:[],role:[],campaign:[]};
+  filterState.weekly={advisor:[],teamLead:[],team:[],role:[],campaign:[]};
+  filterState.monthly={advisor:[],teamLead:[],team:[],role:[],campaign:[]};
 }
 resetAllFilterState();
 
