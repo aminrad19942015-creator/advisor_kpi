@@ -36,7 +36,7 @@ export async function getTeamFilterOptions(){
 export async function getOpenFilterOptions(){
  const q=[
   "SELECT DISTINCT owner value FROM open_leads WHERE COALESCE(owner,'')<>'' AND owner IN (SELECT name FROM team_members) ORDER BY value",
-  "SELECT DISTINCT team_lead value FROM team_members WHERE COALESCE(team_lead,'')<>'' ORDER BY value",
+  "SELECT DISTINCT role value FROM team_members WHERE COALESCE(role,'')<>'' ORDER BY value",
   "SELECT DISTINCT team value FROM team_members WHERE COALESCE(team,'')<>'' ORDER BY value",
   "SELECT DISTINCT business_unit value FROM team_members WHERE COALESCE(business_unit,'')<>'' ORDER BY value",
   "SELECT DISTINCT lead_type value FROM open_leads WHERE COALESCE(lead_type,'')<>'' ORDER BY value",
@@ -47,7 +47,8 @@ export async function getOpenFilterOptions(){
   "SELECT DISTINCT last_status value FROM open_leads WHERE COALESCE(last_status,'')<>'' ORDER BY value"
  ];
  const r=await Promise.all(q.map(sql=>tursoSelect(sql)));const v=(i:number)=>r[i].map((x:any)=>x.value);
- return {advisor:v(0),teamLead:v(1),team:v(2),personUnit:v(3),leadType:v(4),nextCallReason:['بدون تسک',...v(5)],customerRank:v(6),campaign:v(7),source:v(8),lastStatus:v(9)};
+ const campaigns=v(7);const pinned=['Ayar','LeadAdvice'];const orderedCampaigns=[...pinned.filter(x=>campaigns.includes(x)),...campaigns.filter(x=>!pinned.includes(x))];
+ return {advisor:v(0),role:v(1),team:v(2),personUnit:v(3),leadType:v(4),nextCallReason:['بدون تسک',...v(5)],customerRank:v(6),campaign:orderedCampaigns,source:v(8),lastStatus:v(9)};
 }
 
 export async function getOpenSummary(filters:any={}){
@@ -58,13 +59,13 @@ export async function getOpenSummary(filters:any={}){
  allWhere+=sqlIn('o.campaign',norm(filters.campaign),allArgs);
  allWhere+=sqlIn('o.last_status',norm(filters.lastStatus),allArgs);
  allWhere+=sqlIn('o.source',norm(filters.source),allArgs);
- const teamLeads=norm(filters.teamLead),teams=norm(filters.team),personUnits=norm(filters.personUnit);
- if(teamLeads.length||teams.length||personUnits.length){const pArgs:any[]=[];let pSql='SELECT name FROM team_members WHERE 1=1';pSql+=sqlIn('team_lead',teamLeads,pArgs);pSql+=sqlIn('team',teams,pArgs);pSql+=sqlIn('business_unit',personUnits,pArgs);allWhere+=` AND o.owner IN (${pSql})`;allArgs.push(...pArgs)}
+ const roles=norm(filters.role),teams=norm(filters.team),personUnits=norm(filters.personUnit);
+ if(roles.length||teams.length||personUnits.length){const pArgs:any[]=[];let pSql='SELECT name FROM team_members WHERE 1=1';pSql+=sqlIn('role',roles,pArgs);pSql+=sqlIn('team',teams,pArgs);pSql+=sqlIn('business_unit',personUnits,pArgs);allWhere+=` AND o.owner IN (${pSql})`;allArgs.push(...pArgs)}
  const reasons=norm(filters.nextCallReason);
  if(reasons.length){const hasBlank=reasons.includes('بدون تسک');const normal=reasons.filter((x:any)=>x!=='بدون تسک');const parts:string[]=[];if(normal.length){const qs=normal.map((v:any)=>{allArgs.push(v);return '?'}).join(',');parts.push(`o.next_call_reason IN (${qs})`)}if(hasBlank)parts.push("TRIM(COALESCE(o.next_call_reason,''))=''");if(parts.length)allWhere+=' AND ('+parts.join(' OR ')+')'}
  const age=filters.age||'';if(age==='0-3')allWhere+=' AND o.age_days BETWEEN 0 AND 3';if(age==='4-7')allWhere+=' AND o.age_days BETWEEN 4 AND 7';if(age==='8-14')allWhere+=' AND o.age_days BETWEEN 8 AND 14';if(age==='15-30')allWhere+=' AND o.age_days BETWEEN 15 AND 30';if(age==='31+')allWhere+=' AND o.age_days >= 31';
  const args:any[]=[];let join=' FROM open_leads o INNER JOIN team_members t ON t.name=o.owner WHERE 1=1';
- join+=sqlIn('o.owner',norm(filters.advisor),args);join+=sqlIn('t.team_lead',teamLeads,args);join+=sqlIn('t.team',teams,args);join+=sqlIn('t.business_unit',personUnits,args);join+=sqlIn('o.lead_type',norm(filters.leadType),args);join+=sqlIn('o.customer_rank',norm(filters.customerRank),args);join+=sqlIn('o.campaign',norm(filters.campaign),args);join+=sqlIn('o.last_status',norm(filters.lastStatus),args);join+=sqlIn('o.source',norm(filters.source),args);
+ join+=sqlIn('o.owner',norm(filters.advisor),args);join+=sqlIn('t.role',roles,args);join+=sqlIn('t.team',teams,args);join+=sqlIn('t.business_unit',personUnits,args);join+=sqlIn('o.lead_type',norm(filters.leadType),args);join+=sqlIn('o.customer_rank',norm(filters.customerRank),args);join+=sqlIn('o.campaign',norm(filters.campaign),args);join+=sqlIn('o.last_status',norm(filters.lastStatus),args);join+=sqlIn('o.source',norm(filters.source),args);
  if(reasons.length){const hasBlank=reasons.includes('بدون تسک');const normal=reasons.filter((x:any)=>x!=='بدون تسک');const parts:string[]=[];if(normal.length){const qs=normal.map((v:any)=>{args.push(v);return '?'}).join(',');parts.push(`o.next_call_reason IN (${qs})`)}if(hasBlank)parts.push("TRIM(COALESCE(o.next_call_reason,''))=''");if(parts.length)join+=' AND ('+parts.join(' OR ')+')'}
  if(age==='0-3')join+=' AND o.age_days BETWEEN 0 AND 3';if(age==='4-7')join+=' AND o.age_days BETWEEN 4 AND 7';if(age==='8-14')join+=' AND o.age_days BETWEEN 8 AND 14';if(age==='15-30')join+=' AND o.age_days BETWEEN 15 AND 30';if(age==='31+')join+=' AND o.age_days >= 31';
  const stmts:any[]=[
