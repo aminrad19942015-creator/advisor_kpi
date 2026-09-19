@@ -44,6 +44,8 @@ export async function getPeriodCampaignOptions(period:string){
 export async function getFilteredPeriodSummary(period:string,filters:any={}){
  const L=table(period,'lead'),O=table(period,'opp'),C=table(period,'call'),T=table(period,'ticket');
  const lw=whereFor(filters,'lead',period),ow=whereFor(filters,'opp',period),cw=whereFor(filters,'call',period),tw=whereFor(filters,'ticket',period);
+ const attendanceFilters={...(filters||{}),campaign:[]};
+ const alw=whereFor(attendanceFilters,'lead',period),aow=whereFor(attendanceFilters,'opp',period),acw=whereFor(attendanceFilters,'call',period),atw=whereFor(attendanceFilters,'ticket',period);
  const q:any=await namedBatch([
   {key:'leadKpi',sql:`SELECT COUNT(*) closed,SUM(CASE WHEN COALESCE(last_status,'') NOT IN ${TALKED_EXCLUDED_SQL} THEN 1 ELSE 0 END) talked,AVG(CASE WHEN created_date<>'' AND last_modified_date<>'' AND julianday(last_modified_date)>=julianday(created_date) THEN julianday(last_modified_date)-julianday(created_date) END) closeAvg FROM ${L}${lw.where}`,args:lw.args},
   {key:'oppKpi',sql:`SELECT SUM(CASE WHEN registration_type='LEAD' THEN 1 ELSE 0 END) oppLead,SUM(CASE WHEN registration_type='OPP' THEN 1 ELSE 0 END) opp FROM ${O}${ow.where}`,args:ow.args},
@@ -55,6 +57,15 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
   {key:'oppByAdvisor',sql:`SELECT creator name,SUM(CASE WHEN registration_type='OPP' THEN 1 ELSE 0 END) opps FROM ${O}${ow.where} AND COALESCE(creator,'')<>'' GROUP BY creator`,args:ow.args},
   {key:'callByAdvisor',sql:`SELECT user name,COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C}${cw.where} AND COALESCE(user,'')<>'' GROUP BY user`,args:cw.args},
   {key:'ticketByAdvisor',sql:`SELECT owner name,COUNT(*) tickets FROM ${T}${tw.where} AND COALESCE(owner,'')<>'' GROUP BY owner`,args:tw.args},
+  {key:'attendanceByAdvisor',sql:`SELECT name,COUNT(DISTINCT day) attendanceDays FROM (
+    SELECT owner name,date(last_modified_date) day FROM ${L}${alw.where} AND COALESCE(owner,'')<>'' AND last_modified_date<>''
+    UNION
+    SELECT creator name,date(created_date) day FROM ${O}${aow.where} AND COALESCE(creator,'')<>'' AND created_date<>''
+    UNION
+    SELECT user name,date(start_date) day FROM ${C}${acw.where} AND COALESCE(user,'')<>'' AND start_date<>''
+    UNION
+    SELECT owner name,date(closed_at) day FROM ${T}${atw.where} AND COALESCE(owner,'')<>'' AND closed_at<>''
+  ) WHERE day IS NOT NULL GROUP BY name`,args:[...alw.args,...aow.args,...acw.args,...atw.args]},
   {key:'allTeamMembers',sql:'SELECT name,team_lead teamLead,team,role FROM team_members'},
   {key:'leadState',sql:`SELECT COALESCE(NULLIF(last_status,''),'بدون مقدار') label,COUNT(*) count FROM ${L}${lw.where} GROUP BY label ORDER BY count DESC`,args:lw.args},
   {key:'rank',sql:`SELECT COALESCE(NULLIF(customer_rank,''),'بدون مقدار') label,COUNT(*) count FROM ${L}${lw.where} GROUP BY label ORDER BY count DESC`,args:lw.args},
@@ -77,13 +88,14 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
  ]);
  const lk=first(q.leadKpi),ok=first(q.oppKpi),ck=first(q.callKpi),rk=first(q.repeatCalls),tk=first(q.ticketKpi);
  const days=(q.days||[]).map((r:any)=>r.day),dayCount=Math.max(1,days.length);
- const advisorMap:any={};const ensure=(name:string)=>name?(advisorMap[name]||(advisorMap[name]={name,teamLead:'',team:'',role:'',leads:0,talked:0,opps:0,calls:0,t8:0,tickets:0})):null;
+ const advisorMap:any={};const ensure=(name:string)=>name?(advisorMap[name]||(advisorMap[name]={name,teamLead:'',team:'',role:'',leads:0,talked:0,opps:0,calls:0,t8:0,tickets:0,attendanceDays:0})):null;
  for(const r of q.leadByAdvisor||[]){const x=ensure(r.name);if(x){x.leads=Number(r.leads||0);x.talked=Number(r.talked||0)}}
  for(const r of q.oppByAdvisor||[]){const x=ensure(r.name);if(x)x.opps=Number(r.opps||0)}
  for(const r of q.callByAdvisor||[]){const x=ensure(r.name);if(x){x.calls=Number(r.calls||0);x.t8=Number(r.t8||0)}}
  for(const r of q.ticketByAdvisor||[]){const x=ensure(r.name);if(x)x.tickets=Number(r.tickets||0)}
+ for(const r of q.attendanceByAdvisor||[]){const x=ensure(r.name);if(x)x.attendanceDays=Number(r.attendanceDays||0)}
  const people:any=Object.fromEntries((q.allTeamMembers||[]).map((p:any)=>[p.name,p]));for(const name of Object.keys(advisorMap)){const p=people[name];if(p)Object.assign(advisorMap[name],{teamLead:p.teamLead||'',team:p.team||'',role:p.role||''})}
- const advisors=Object.values(advisorMap).map((r:any)=>{const total=Number(r.talked||0)+Number(r.opps||0)+Number(r.calls||0)+Number(r.tickets||0);return {...r,total,callAvg:Number(r.calls||0)/dayCount,leadAvg:Number(r.leads||0)/dayCount,talkedAvg:Number(r.talked||0)/dayCount,oppAvg:Number(r.opps||0)/dayCount,t8Avg:Number(r.t8||0)/dayCount,ticketAvg:Number(r.tickets||0)/dayCount,activityAvg:total/dayCount}}).sort((a:any,b:any)=>b.total-a.total);
+ const advisors=Object.values(advisorMap).map((r:any)=>{const total=Number(r.talked||0)+Number(r.opps||0)+Number(r.calls||0)+Number(r.tickets||0);const attendanceDays=Math.max(1,Number(r.attendanceDays||0));return {...r,attendanceDays,total,callAvg:Number(r.calls||0)/attendanceDays,leadAvg:Number(r.leads||0)/attendanceDays,talkedAvg:Number(r.talked||0)/attendanceDays,oppAvg:Number(r.opps||0)/attendanceDays,t8Avg:Number(r.t8||0)/attendanceDays,ticketAvg:Number(r.tickets||0)/attendanceDays,activityAvg:total/attendanceDays}}).sort((a:any,b:any)=>b.total-a.total);
  const buildTrend=(sets:any[])=>{const m:any={};const touch=(d:string)=>m[d]||(m[d]={day:d,talked:0,opp:0,calls:0,t8:0,tickets:0,total:0});for(const [rows,fields] of sets)for(const r of rows||[]){const x=touch(r.day);for(const f of fields)x[f]=Number(r[f]||0)}return Object.keys(m).sort().map(d=>{const r=m[d];r.total=r.talked+r.opp+r.calls+r.tickets;return r})};
  const trend=buildTrend([[q.trendLeads,['talked']],[q.trendOpps,['opp']],[q.trendCalls,['calls','t8']],[q.trendTickets,['tickets']]]);
  const teamTrend=buildTrend([[q.teamTrendLead,['talked']],[q.teamTrendOpp,['opp']],[q.teamTrendCall,['calls','t8']],[q.teamTrendTicket,['tickets']]]);
