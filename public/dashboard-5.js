@@ -27,12 +27,15 @@ function renderAll(){
  let done=0;
  function finish(){
    done++;
-   if(done<2)return;
+   if(done<5)return;
    renderTeam();renderOpen();renderPeriod('daily','dailyPage','فعالیت دیروز');renderPeriod('weekly','weeklyPage','فعالیت هفته');renderPeriod('monthly','monthlyPage','فعالیت ماهانه');makeTableSortable();bindChartHover();
    $('loadingScreen').style.display='none';
  }
  google.script.run.withSuccessHandler(o=>{filterOptions.team=o||{};finish()}).getTeamFilterOptions();
  google.script.run.withSuccessHandler(o=>{filterOptions.open=o||{};finish()}).getOpenFilterOptions();
+ ['daily','weekly','monthly'].forEach(period=>{
+   google.script.run.withSuccessHandler(o=>{filterOptions.periodCampaign[period]=o||[];finish()}).getPeriodCampaignOptions(period);
+ });
 }
 
 google.script.run
