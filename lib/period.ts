@@ -10,11 +10,19 @@ function table(period:string,type:'lead'|'opp'|'call'|'ticket'){
  if(!p)throw new Error('بازه نامعتبر: '+period);
  return p+({lead:'leads',opp:'opportunities',call:'calls',ticket:'tickets'} as const)[type];
 }
-function whereFor(filters:any,source:'lead'|'opp'|'call'|'ticket'){
+function whereFor(filters:any,source:'lead'|'opp'|'call'|'ticket',period?:string){
  filters=filters||{};const args:any[]=[];const person=source==='lead'?'owner':source==='opp'?'creator':source==='call'?'user':'owner';let where=' WHERE 1=1';
  const advisors=norm(filters.advisor);if(advisors.length)where+=sqlIn(person,advisors,args);
  const campaigns=norm(filters.campaign);
- if(campaigns.length && source==='lead') where+=sqlIn('campaign',campaigns,args);
+ if(campaigns.length){
+  if(source==='lead'||source==='opp') where+=sqlIn('campaign',campaigns,args);
+  if(source==='call'){
+   if(!period) throw new Error('بازه برای فیلتر کمپین تماس مشخص نیست.');
+   const leadTable=table(period,'lead');
+   const qs=campaigns.map(v=>{args.push(v);return '?'}).join(',');
+   where+=` AND lead_number IN (SELECT lead_number FROM ${leadTable} WHERE campaign IN (${qs}) AND COALESCE(lead_number,'')<>'')`;
+  }
+ }
  const leads=norm(filters.teamLead),teams=norm(filters.team),roles=norm(filters.role);
  if(leads.length||teams.length||roles.length){const subArgs:any[]=[];let sub='SELECT name FROM team_members WHERE 1=1';sub+=sqlIn('team_lead',leads,subArgs);sub+=sqlIn('team',teams,subArgs);sub+=sqlIn('role',roles,subArgs);where+=` AND ${person} IN (${sub})`;args.push(...subArgs);}
  return {where,args};
@@ -29,7 +37,7 @@ export async function getPeriodCampaignOptions(period:string){
 
 export async function getFilteredPeriodSummary(period:string,filters:any={}){
  const L=table(period,'lead'),O=table(period,'opp'),C=table(period,'call'),T=table(period,'ticket');
- const lw=whereFor(filters,'lead'),ow=whereFor(filters,'opp'),cw=whereFor(filters,'call'),tw=whereFor(filters,'ticket');
+ const lw=whereFor(filters,'lead',period),ow=whereFor(filters,'opp',period),cw=whereFor(filters,'call',period),tw=whereFor(filters,'ticket',period);
  const q:any=await namedBatch([
   {key:'leadKpi',sql:`SELECT COUNT(*) closed,SUM(CASE WHEN COALESCE(last_status,'') NOT IN ${TALKED_EXCLUDED_SQL} THEN 1 ELSE 0 END) talked,AVG(CASE WHEN created_date<>'' AND last_modified_date<>'' AND julianday(last_modified_date)>=julianday(created_date) THEN julianday(last_modified_date)-julianday(created_date) END) closeAvg FROM ${L}${lw.where}`,args:lw.args},
   {key:'oppKpi',sql:`SELECT SUM(CASE WHEN registration_type='LEAD' THEN 1 ELSE 0 END) oppLead,SUM(CASE WHEN registration_type='OPP' THEN 1 ELSE 0 END) opp FROM ${O}${ow.where}`,args:ow.args},
