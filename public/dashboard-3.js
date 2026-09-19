@@ -35,7 +35,8 @@ function bindPeriodFilters(period){
   simpleMulti(period+'FLead',o.teamLead,f.teamLead,v=>{f.teamLead=v;debouncedApplyPeriod(period)});
   simpleMulti(period+'FTeam',o.team,f.team,v=>{f.team=v;debouncedApplyPeriod(period)});
   simpleMulti(period+'FRole',o.role,f.role,v=>{f.role=v;debouncedApplyPeriod(period)});
-  setTimeout(()=>{$(period+'FClear').onclick=()=>{filterState[period]={advisor:[],teamLead:[],team:[],role:[]};applyPeriodFilters(period)}},0);
+  simpleMulti(period+'FCampaign',(filterOptions.periodCampaign||{})[period]||[],f.campaign,v=>{f.campaign=v;debouncedApplyPeriod(period)});
+  setTimeout(()=>{$(period+'FClear').onclick=()=>{filterState[period]={advisor:[],teamLead:[],team:[],role:[],campaign:[]};applyPeriodFilters(period)}},0);
 }
 function applyPeriodFilters(period){
   const pageId=period+'Page';
