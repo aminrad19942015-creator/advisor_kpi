@@ -28,8 +28,14 @@ function renderAll(){
  function finish(){
    done++;
    if(done<5)return;
-   renderTeam();renderOpen();renderPeriod('daily','dailyPage','فعالیت دیروز');renderPeriod('weekly','weeklyPage','فعالیت هفته');renderPeriod('monthly','monthlyPage','فعالیت ماهانه');makeTableSortable();bindChartHover();
-   $('loadingScreen').style.display='none';
+   google.script.run
+    .withFailureHandler(e=>{document.querySelector('.loading-card p').textContent='خطا در اعمال فیلتر پیش‌فرض سرنخ‌های باز: '+(e.message||e)})
+    .withSuccessHandler(openSummary=>{
+      state.data.open=openSummary;
+      renderTeam();renderOpen();renderPeriod('daily','dailyPage','فعالیت دیروز');renderPeriod('weekly','weeklyPage','فعالیت هفته');renderPeriod('monthly','monthlyPage','فعالیت ماهانه');makeTableSortable();bindChartHover();
+      $('loadingScreen').style.display='none';
+    })
+    .getOpenFilteredSummary(filterState.open);
  }
  google.script.run.withSuccessHandler(o=>{filterOptions.team=o||{};finish()}).getTeamFilterOptions();
  google.script.run.withSuccessHandler(o=>{filterOptions.open=o||{};finish()}).getOpenFilterOptions();
