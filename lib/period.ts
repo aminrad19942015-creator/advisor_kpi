@@ -15,7 +15,13 @@ function whereFor(filters:any,source:'lead'|'opp'|'call'|'ticket',period?:string
  const advisors=norm(filters.advisor);if(advisors.length)where+=sqlIn(person,advisors,args);
  const campaigns=norm(filters.campaign);
  if(campaigns.length){
-  if(source==='lead'||source==='opp') where+=sqlIn('campaign',campaigns,args);
+  if(source==='lead') where+=sqlIn('campaign',campaigns,args);
+  if(source==='opp'){
+   if(!period) throw new Error('بازه برای فیلتر کمپین فرصت مشخص نیست.');
+   const leadTable=table(period,'lead');
+   const qs=campaigns.map(v=>{args.push(v);return '?'}).join(',');
+   where+=` AND EXISTS (SELECT 1 FROM ${leadTable} cl WHERE cl.campaign IN (${qs}) AND COALESCE(cl.lead_number,'')<>'' AND cl.lead_number=lead_number)`;
+  }
   if(source==='call'){
    if(!period) throw new Error('بازه برای فیلتر کمپین تماس مشخص نیست.');
    const leadTable=table(period,'lead');
