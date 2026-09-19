@@ -179,6 +179,7 @@ function periodFiltersHtml(period){
     <div class="field"><label>تیم لید</label><select id="${period}FLead"></select></div>
     <div class="field"><label>تیم</label><select id="${period}FTeam"></select></div>
     <div class="field"><label>رده</label><select id="${period}FRole"></select></div>
+    <div class="field"><label>کمپین</label><select id="${period}FCampaign"></select></div>
     <button class="clear" id="${period}FClear">پاک کردن</button>
   </div>`;
 }
