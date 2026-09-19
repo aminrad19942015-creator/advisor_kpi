@@ -21,6 +21,12 @@ function whereFor(filters:any,source:'lead'|'opp'|'call'|'ticket'){
 }
 async function namedBatch(items:Array<TursoStatement&{key:string}>){const rows=await tursoBatch(items.map(({sql,args})=>({sql,args})));return Object.fromEntries(items.map((x,i)=>[x.key,rows[i]]));}
 
+export async function getPeriodCampaignOptions(period:string){
+ const L=table(period,'lead');
+ const rows=await tursoSelect(`SELECT DISTINCT TRIM(campaign) campaign FROM ${L} WHERE TRIM(COALESCE(campaign,''))<>'' ORDER BY campaign`);
+ return rows.map((r:any)=>r.campaign).filter(Boolean);
+}
+
 export async function getFilteredPeriodSummary(period:string,filters:any={}){
  const L=table(period,'lead'),O=table(period,'opp'),C=table(period,'call'),T=table(period,'ticket');
  const lw=whereFor(filters,'lead'),ow=whereFor(filters,'opp'),cw=whereFor(filters,'call'),tw=whereFor(filters,'ticket');
