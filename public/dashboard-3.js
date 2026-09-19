@@ -41,7 +41,10 @@ function bindPeriodFilters(period){
 function applyPeriodFilters(period){
   const pageId=period+'Page';
   setPageLoading(pageId,true);
-  google.script.run.withSuccessHandler(s=>{state.data[period]=s;renderPeriod(period,pageId,period==='daily'?'فعالیت دیروز':period==='weekly'?'فعالیت هفته':'فعالیت ماهانه');bindChartHover($(pageId));setPageLoading(pageId,false)}).getFilteredPeriodSummary(period,filterState[period]);
+  google.script.run
+    .withFailureHandler(e=>{setPageLoading(pageId,false);toast('خطا در اعمال فیلتر: '+(e?.message||e||'خطای نامشخص'));})
+    .withSuccessHandler(s=>{state.data[period]=s;renderPeriod(period,pageId,period==='daily'?'فعالیت دیروز':period==='weekly'?'فعالیت هفته':'فعالیت ماهانه');bindChartHover($(pageId));setPageLoading(pageId,false)})
+    .getFilteredPeriodSummary(period,filterState[period]);
 }
 
 function bindChartHover(root=document){
