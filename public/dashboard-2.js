@@ -152,7 +152,7 @@ function openFiltersHtml(){
   return `<div class="lead-filter-section">
    <div class="lead-filter-row">
     <div class="field"><label>مشاور / مالک</label><select id="ofAdvisor"></select></div>
-    <div class="field"><label>تیم لید</label><select id="ofLead"></select></div>
+    <div class="field"><label>رده</label><select id="ofRole"></select></div>
     <div class="field"><label>تیم</label><select id="ofTeam"></select></div>
     <div class="field"><label>واحد تجاری فرد</label><select id="ofUnit"></select></div>
     <div class="field"><label>بازه سن</label><select id="ofAge">
