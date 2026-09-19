@@ -13,6 +13,8 @@ function table(period:string,type:'lead'|'opp'|'call'|'ticket'){
 function whereFor(filters:any,source:'lead'|'opp'|'call'|'ticket'){
  filters=filters||{};const args:any[]=[];const person=source==='lead'?'owner':source==='opp'?'creator':source==='call'?'user':'owner';let where=' WHERE 1=1';
  const advisors=norm(filters.advisor);if(advisors.length)where+=sqlIn(person,advisors,args);
+ const campaigns=norm(filters.campaign);
+ if(campaigns.length && (source==='lead'||source==='opp')) where+=sqlIn('campaign',campaigns,args);
  const leads=norm(filters.teamLead),teams=norm(filters.team),roles=norm(filters.role);
  if(leads.length||teams.length||roles.length){const subArgs:any[]=[];let sub='SELECT name FROM team_members WHERE 1=1';sub+=sqlIn('team_lead',leads,subArgs);sub+=sqlIn('team',teams,subArgs);sub+=sqlIn('role',roles,subArgs);where+=` AND ${person} IN (${sub})`;args.push(...subArgs);}
  return {where,args};
