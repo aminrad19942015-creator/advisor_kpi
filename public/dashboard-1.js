@@ -90,7 +90,7 @@ function chart(rows){
 
 const filterState={
   team:{search:'',teamLead:[],team:[],gender:[],role:[],businessUnit:[]},
-  open:{advisor:[],teamLead:[],team:[],personUnit:[],age:'',leadType:[],nextCallReason:[],customerRank:[],campaign:[],source:[],lastStatus:[]},
+  open:{advisor:[],role:[],team:[],personUnit:[],age:'',leadType:['حقیقی'],nextCallReason:[],customerRank:[],campaign:['Ayar','LeadAdvice'],source:[],lastStatus:[]},
   daily:{advisor:[],teamLead:[],team:[],role:[],campaign:[]},
   weekly:{advisor:[],teamLead:[],team:[],role:[],campaign:[]},
   monthly:{advisor:[],teamLead:[],team:[],role:[],campaign:[]}
@@ -101,7 +101,7 @@ let filterOptions={team:{},open:{},periodCampaign:{daily:[],weekly:[],monthly:[]
 // No filter should be selected automatically on first load.
 function resetAllFilterState(){
   filterState.team={search:'',teamLead:[],team:[],gender:[],role:[],businessUnit:[]};
-  filterState.open={advisor:[],teamLead:[],team:[],personUnit:[],age:'',leadType:[],nextCallReason:[],customerRank:[],campaign:[],source:[],lastStatus:[]};
+  filterState.open={advisor:[],role:[],team:[],personUnit:[],age:'',leadType:['حقیقی'],nextCallReason:[],customerRank:[],campaign:['Ayar','LeadAdvice'],source:[],lastStatus:[]};
   filterState.daily={advisor:[],teamLead:[],team:[],role:[],campaign:[]};
   filterState.weekly={advisor:[],teamLead:[],team:[],role:[],campaign:[]};
   filterState.monthly={advisor:[],teamLead:[],team:[],role:[],campaign:[]};
