@@ -45,7 +45,7 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
  const L=table(period,'lead'),O=table(period,'opp'),C=table(period,'call'),T=table(period,'ticket');
  const lw=whereFor(filters,'lead',period),ow=whereFor(filters,'opp',period),cw=whereFor(filters,'call',period),tw=whereFor(filters,'ticket',period);
  const attendanceFilters={...(filters||{}),campaign:[]};
- const alw=whereFor(attendanceFilters,'lead',period),aow=whereFor(attendanceFilters,'opp',period),acw=whereFor(attendanceFilters,'call',period),atw=whereFor(attendanceFilters,'ticket',period);
+ const acw=whereFor(attendanceFilters,'call',period);
  const q:any=await namedBatch([
   {key:'leadKpi',sql:`SELECT COUNT(*) closed,SUM(CASE WHEN COALESCE(last_status,'') NOT IN ${TALKED_EXCLUDED_SQL} THEN 1 ELSE 0 END) talked,AVG(CASE WHEN created_date<>'' AND last_modified_date<>'' AND julianday(last_modified_date)>=julianday(created_date) THEN julianday(last_modified_date)-julianday(created_date) END) closeAvg FROM ${L}${lw.where}`,args:lw.args},
   {key:'oppKpi',sql:`SELECT SUM(CASE WHEN registration_type='LEAD' THEN 1 ELSE 0 END) oppLead,SUM(CASE WHEN registration_type='OPP' THEN 1 ELSE 0 END) opp FROM ${O}${ow.where}`,args:ow.args},
