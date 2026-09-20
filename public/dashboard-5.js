@@ -1,4 +1,17 @@
-function rowsTable(rows){if(!rows||!rows.length)return '<div class="empty">رکوردی وجود ندارد.</div>';const cols=Object.keys(rows[0]);return `<div class="table-wrap activity-detail-wrap"><table class="table"><thead><tr>${cols.map(c=>`<th>${safe(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${safe(r[c]??'—')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
+function detailCell(c,v){
+ if(v==null||v==='')return '—';
+ const key=String(c).toLowerCase();
+ const isDate=/(^|_)(date|start|modified|created|closed|resolve|entered|followup|at)($|_)/.test(key)||/(تاریخ|زمان ثبت|زمان بسته|شروع|آخرین تغییر)/.test(String(c));
+ if(isDate){
+  const d=new Date(v);
+  if(!isNaN(d)){
+   const hasTime=/\d{1,2}:\d{2}/.test(String(v));
+   return hasTime?d.toLocaleString('fa-IR',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('fa-IR',{year:'numeric',month:'2-digit',day:'2-digit'});
+  }
+ }
+ return String(v);
+}
+function rowsTable(rows){if(!rows||!rows.length)return '<div class="empty">رکوردی وجود ندارد.</div>';const cols=Object.keys(rows[0]);return `<div class="table-wrap activity-detail-wrap"><table class="table"><thead><tr>${cols.map(c=>`<th>${safe(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${safe(detailCell(c,r[c]))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
 function loadActivityDetail(period,type,user){const box=$(`${period}Detail`);box.style.display='block';$(`${period}DetailSub`).textContent='در حال دریافت...';$(`${period}DetailBody`).innerHTML='<div class="empty">در حال دریافت...</div>';google.script.run.withFailureHandler(e=>{$(`${period}DetailBody`).innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>'}).withSuccessHandler(rows=>{$(`${period}DetailSub`).textContent=fa(rows.length)+' رکورد — '+user;$(`${period}DetailBody`).innerHTML=rowsTable(rows);makeTableSortable(box);box.scrollIntoView({behavior:'smooth',block:'start'})}).getActivityDetails(period,type,user)}
 function loadLeadStatusKpiDetail(period,type){
  const box=$(`${period}Detail`);
