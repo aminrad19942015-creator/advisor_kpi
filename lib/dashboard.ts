@@ -82,6 +82,52 @@ export async function getOpenSummary(filters:any={}){
  return {kpis:{...first(r[1]),...first(r[0])},advisors:r[2],dimensions};
 }
 
+export async function getOpenOldestDetails(filters:any={}){
+ const args:any[]=[];
+ let where=' FROM open_leads o INNER JOIN team_members t ON t.name=o.owner WHERE 1=1';
+ const roles=norm(filters.role),teams=norm(filters.team),personUnits=norm(filters.personUnit),reasons=norm(filters.nextCallReason);
+ where+=sqlIn('o.owner',norm(filters.advisor),args);
+ where+=sqlIn('t.role',roles,args);
+ where+=sqlIn('t.team',teams,args);
+ where+=sqlIn('t.business_unit',personUnits,args);
+ where+=sqlIn('o.lead_type',norm(filters.leadType),args);
+ where+=sqlIn('o.customer_rank',norm(filters.customerRank),args);
+ where+=sqlIn('o.campaign',norm(filters.campaign),args);
+ where+=sqlIn('o.last_status',norm(filters.lastStatus),args);
+ where+=sqlIn('o.source',norm(filters.source),args);
+ if(reasons.length){
+  const hasBlank=reasons.includes('بدون تسک');
+  const normal=reasons.filter((x:any)=>x!=='بدون تسک');
+  const parts:string[]=[];
+  if(normal.length){const qs=normal.map((v:any)=>{args.push(v);return '?'}).join(',');parts.push(`o.next_call_reason IN (${qs})`)}
+  if(hasBlank)parts.push("TRIM(COALESCE(o.next_call_reason,''))=''");
+  if(parts.length)where+=' AND ('+parts.join(' OR ')+')';
+ }
+ const age=filters.age||'';
+ if(age==='0-3')where+=' AND o.age_days BETWEEN 0 AND 3';
+ if(age==='4-7')where+=' AND o.age_days BETWEEN 4 AND 7';
+ if(age==='8-14')where+=' AND o.age_days BETWEEN 8 AND 14';
+ if(age==='15-30')where+=' AND o.age_days BETWEEN 15 AND 30';
+ if(age==='31+')where+=' AND o.age_days >= 31';
+ return tursoSelect(`SELECT
+   o.lead_number AS leadNumber,
+   o.created_date AS createdDate,
+   o.age_days AS ageDays,
+   o.customer_rank AS customerRank,
+   o.last_status AS lastStatus,
+   o.next_call_reason AS nextCallReason,
+   o.customer_name AS customerName,
+   o.owner,
+   o.lead_type AS leadType,
+   o.source,
+   o.campaign,
+   o.source_software AS sourceSoftware,
+   o.business_unit AS businessUnit
+  ${where}
+  ORDER BY o.age_days DESC,o.created_date ASC,o.owner
+  LIMIT 4000`,args);
+}
+
 export async function getOpenNearDeadlineDetails(leadType:string,owner:string,filters:any={}){
  if(!['حقیقی','حقوقی'].includes(leadType))throw new Error('نوع لید برای سررسید نامعتبر است.');
  const min=leadType==='حقیقی'?15:57,max=leadType==='حقیقی'?18:60,args:any[]=[leadType,min,max];
