@@ -133,7 +133,7 @@ export async function getOpenOldestDetails(filters:any={}){
   WHERE ageDays=(SELECT MAX(ageDays) FROM filtered)
   ORDER BY createdDate ASC,owner
   LIMIT 4000
- `,[...args,...args]);
+ `,args);
 }
 
 
