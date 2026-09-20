@@ -1,22 +1,3 @@
-function loadOpenOldestDetails(){
- const box=$('openDetail');
- box.style.display='block';
- $('openDetailSub').textContent='در حال دریافت قدیمی‌ترین لیدها...';
- $('openDetailBody').innerHTML='<div class="empty">در حال خواندن جزئیات...</div>';
-
- google.script.run
-  .withFailureHandler(e=>{
-    $('openDetailBody').innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>';
-  })
-  .withSuccessHandler(rows=>{
-    $('openDetailSub').textContent='قدیمی‌ترین لیدها — '+fa(rows.length)+' رکورد';
-    $('openDetailBody').innerHTML=`<div class="table-wrap activity-detail-wrap"><table class="table"><thead><tr><th>مشاور</th><th>شماره سرنخ</th><th>نام مشتری</th><th>تاریخ ثبت</th><th>سن</th><th>نوع</th><th>رتبه</th><th>کمپین</th><th>منشا</th><th>نرم‌افزار منشا</th><th>آخرین وضعیت</th><th>دلیل تماس بعدی</th><th>واحد تجاری</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${safe(r.owner||'—')}</td><td>${safe(r.leadNumber||'—')}</td><td>${safe(r.customerName||'—')}</td><td>${fmt(r.createdDate)}</td><td><b>${fa(r.ageDays)} روز</b></td><td>${safe(r.leadType||'—')}</td><td>${safe(r.customerRank||'—')}</td><td>${safe(r.campaign||'—')}</td><td>${safe(r.source||'—')}</td><td>${safe(r.sourceSoftware||'—')}</td><td>${safe(r.lastStatus||'—')}</td><td>${safe(r.nextCallReason||'بدون تسک')}</td><td>${safe(r.businessUnit||'—')}</td></tr>`).join('')}</tbody></table></div>`;
-    makeTableSortable(box);
-    box.scrollIntoView({behavior:'smooth',block:'start'});
-  })
-  .getOpenOldestDetails(filterState.open);
-}
-
 function loadOpenDeadlineDetail(leadType,owner){
  const box=$('openDetail');
  box.style.display='block';
