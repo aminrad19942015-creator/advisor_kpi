@@ -122,18 +122,7 @@ export async function getLeadStatusKpiDetails(period:string,type:string,filters:
  if(type==='noStatus')condition="TRIM(COALESCE(last_status,''))='عدم تعیین وضعیت در زمان مقرر'";
  else if(type==='noResponse')condition="REPLACE(TRIM(COALESCE(last_status,'')),' ','') IN ('عدمپاسخ(2بار)','عدمپاسخ(۲بار)')";
  else throw new Error('نوع شاخص وضعیت لید نامعتبر است.');
- return tursoSelect(`SELECT
-   lead_number AS leadNumber,
-   owner,
-   customer_name AS customerName,
-   created_date AS createdDate,
-   last_modified_date AS lastModifiedDate,
-   last_status AS lastStatus,
-   customer_rank AS customerRank,
-   campaign,
-   source,
-   next_call_reason AS nextCallReason,
-   lead_type AS leadType
+ return tursoSelect(`SELECT *
   FROM ${L}${lw.where} AND ${condition}
   ORDER BY last_modified_date DESC,owner
   LIMIT 4000`,lw.args);
