@@ -46,6 +46,8 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
  const lw=whereFor(filters,'lead',period),ow=whereFor(filters,'opp',period),cw=whereFor(filters,'call',period),tw=whereFor(filters,'ticket',period);
  const attendanceFilters={...(filters||{}),campaign:[]};
  const acw=whereFor(attendanceFilters,'call',period);
+ const benchmarkFilters={campaign:norm(filters?.campaign)};
+ const blw=whereFor(benchmarkFilters,'lead',period),bow=whereFor(benchmarkFilters,'opp',period),bcw=whereFor(benchmarkFilters,'call',period),btw=whereFor(benchmarkFilters,'ticket',period);
  const q:any=await namedBatch([
   {key:'leadKpi',sql:`SELECT COUNT(*) closed,SUM(CASE WHEN COALESCE(last_status,'') NOT IN ${TALKED_EXCLUDED_SQL} THEN 1 ELSE 0 END) talked,AVG(CASE WHEN created_date<>'' AND last_modified_date<>'' AND julianday(last_modified_date)>=julianday(created_date) THEN julianday(last_modified_date)-julianday(created_date) END) closeAvg FROM ${L}${lw.where}`,args:lw.args},
   {key:'oppKpi',sql:`SELECT SUM(CASE WHEN registration_type='LEAD' THEN 1 ELSE 0 END) oppLead,SUM(CASE WHEN registration_type='OPP' THEN 1 ELSE 0 END) opp FROM ${O}${ow.where}`,args:ow.args},
@@ -83,7 +85,11 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
   {key:'teamTrendLead',sql:`SELECT date(last_modified_date) day,SUM(CASE WHEN COALESCE(last_status,'') NOT IN ${TALKED_EXCLUDED_SQL} THEN 1 ELSE 0 END) talked FROM ${L}${lw.where} AND owner IN (SELECT name FROM team_members) AND last_modified_date<>'' GROUP BY day`,args:lw.args},
   {key:'teamTrendOpp',sql:`SELECT date(created_date) day,COUNT(*) opp FROM ${O}${ow.where} AND creator IN (SELECT name FROM team_members) AND registration_type='OPP' AND created_date<>'' GROUP BY day`,args:ow.args},
   {key:'teamTrendCall',sql:`SELECT date(start_date) day,COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C}${cw.where} AND user IN (SELECT name FROM team_members) AND start_date<>'' GROUP BY day`,args:cw.args},
-  {key:'teamTrendTicket',sql:`SELECT date(closed_at) day,COUNT(*) tickets FROM ${T}${tw.where} AND owner IN (SELECT name FROM team_members) AND closed_at<>'' GROUP BY day`,args:tw.args}
+  {key:'teamTrendTicket',sql:`SELECT date(closed_at) day,COUNT(*) tickets FROM ${T}${tw.where} AND owner IN (SELECT name FROM team_members) AND closed_at<>'' GROUP BY day`,args:tw.args},
+  {key:'unitTrendLead',sql:`SELECT date(last_modified_date) day,SUM(CASE WHEN COALESCE(last_status,'') NOT IN ${TALKED_EXCLUDED_SQL} THEN 1 ELSE 0 END) talked FROM ${L}${blw.where} AND owner IN (SELECT name FROM team_members) AND last_modified_date<>'' GROUP BY day`,args:blw.args},
+  {key:'unitTrendOpp',sql:`SELECT date(created_date) day,COUNT(*) opp FROM ${O}${bow.where} AND creator IN (SELECT name FROM team_members) AND registration_type='OPP' AND created_date<>'' GROUP BY day`,args:bow.args},
+  {key:'unitTrendCall',sql:`SELECT date(start_date) day,COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C}${bcw.where} AND user IN (SELECT name FROM team_members) AND start_date<>'' GROUP BY day`,args:bcw.args},
+  {key:'unitTrendTicket',sql:`SELECT date(closed_at) day,COUNT(*) tickets FROM ${T}${btw.where} AND owner IN (SELECT name FROM team_members) AND closed_at<>'' GROUP BY day`,args:btw.args}
  ]);
  const lk=first(q.leadKpi),ok=first(q.oppKpi),ck=first(q.callKpi),rk=first(q.repeatCalls),tk=first(q.ticketKpi);
  const days=(q.days||[]).map((r:any)=>r.day),dayCount=Math.max(1,days.length);
@@ -99,7 +105,7 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
  const trend=buildTrend([[q.trendLeads,['talked']],[q.trendOpps,['opp']],[q.trendCalls,['calls','t8']],[q.trendTickets,['tickets']]]);
  const teamTrend=buildTrend([[q.teamTrendLead,['talked']],[q.teamTrendOpp,['opp']],[q.teamTrendCall,['calls','t8']],[q.teamTrendTicket,['tickets']]]);
  const closed=Number(lk.closed||0),talked=Number(lk.talked||0),oppLead=Number(ok.oppLead||0),opp=Number(ok.opp||0),calls=Number(ck.calls||0),t8=Number(ck.t8||0),tickets=Number(tk.tickets||0),uniqueCalls=Number(ck.uniqueCalls||0),repeatCalls=Number(rk.repeatCalls||0);
- return {period,days,dayCount,kpis:{total:talked+opp+t8+tickets,closed,talked,oppLead,opp,calls,t8,tickets,closeAvg:lk.closeAvg==null?null:Number(lk.closeAvg),uniqueCalls,repeatCalls,callAvg:calls/dayCount,closedAvg:closed/dayCount,talkedAvg:talked/dayCount},advisors,dimensions:{leadState:pairs(q.leadState),rank:pairs(q.rank),leadSource:pairs(q.leadSource),campaign:pairs(q.campaign),oppKind:pairs(q.oppKind),oppStatus:pairs(q.oppStatus),callSubject:pairs(q.callSubject),leadTicketTopic:pairs(q.leadTicketTopic),ticketState:pairs(q.ticketState),ticketSubject:pairs(q.ticketSubject)},trend,teamTrend};
+ return {period,days,dayCount,kpis:{total:talked+opp+t8+tickets,closed,talked,oppLead,opp,calls,t8,tickets,closeAvg:lk.closeAvg==null?null:Number(lk.closeAvg),uniqueCalls,repeatCalls,callAvg:calls/dayCount,closedAvg:closed/dayCount,talkedAvg:talked/dayCount},advisors,dimensions:{leadState:pairs(q.leadState),rank:pairs(q.rank),leadSource:pairs(q.leadSource),campaign:pairs(q.campaign),oppKind:pairs(q.oppKind),oppStatus:pairs(q.oppStatus),callSubject:pairs(q.callSubject),leadTicketTopic:pairs(q.leadTicketTopic),ticketState:pairs(q.ticketState),ticketSubject:pairs(q.ticketSubject)},trend,teamTrend,unitTrend};
 }
 
 export async function getActivityDetails(period:string,type:string,user:string){let source:'lead'|'opp'|'call'|'ticket',where:string;if(type==='lead'||type==='talked'){source='lead';where='owner=?'+(type==='talked'?` AND COALESCE(last_status,'') NOT IN ${TALKED_EXCLUDED_SQL}`:'')}else if(type==='opp'){source='opp';where="creator=? AND registration_type='OPP'"}else if(type==='call'){source='call';where='user=?'}else if(type==='t8'){source='call';where="user=? AND UPPER(COALESCE(queue,''))='T8'"}else if(type==='ticket'){source='ticket';where='owner=?'}else return [];return tursoSelect(`SELECT * FROM ${table(period,source)} WHERE ${where} LIMIT 4000`,[user]);}
