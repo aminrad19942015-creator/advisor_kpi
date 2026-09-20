@@ -109,7 +109,8 @@ export async function getOpenOldestDetails(filters:any={}){
  if(age==='8-14')where+=' AND o.age_days BETWEEN 8 AND 14';
  if(age==='15-30')where+=' AND o.age_days BETWEEN 15 AND 30';
  if(age==='31+')where+=' AND o.age_days >= 31';
- return tursoSelect(`SELECT
+
+ const base=`SELECT
    o.lead_number AS leadNumber,
    o.created_date AS createdDate,
    o.age_days AS ageDays,
@@ -123,10 +124,18 @@ export async function getOpenOldestDetails(filters:any={}){
    o.campaign,
    o.source_software AS sourceSoftware,
    o.business_unit AS businessUnit
-  ${where}
-  ORDER BY o.age_days DESC,o.created_date ASC,o.owner
-  LIMIT 4000`,args);
+  ${where}`;
+
+ return tursoSelect(`
+  WITH filtered AS (${base})
+  SELECT *
+  FROM filtered
+  WHERE ageDays=(SELECT MAX(ageDays) FROM filtered)
+  ORDER BY createdDate ASC,owner
+  LIMIT 4000
+ `,[...args,...args]);
 }
+
 
 export async function getOpenNearDeadlineDetails(leadType:string,owner:string,filters:any={}){
  if(!['حقیقی','حقوقی'].includes(leadType))throw new Error('نوع لید برای سررسید نامعتبر است.');
