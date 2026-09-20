@@ -64,46 +64,63 @@ function rangeText(s){if(!s||!s.days||!s.days.length)return '—';return s.days.
 function reportBadge(label,text){return `<div class="report-date-badge"><span>${label}</span><b>${safe(text)}</b></div>`}
 function makeTableSortable(root=document){root.querySelectorAll('table.table').forEach(table=>{[...table.querySelectorAll('thead th')].forEach((th,col)=>{if(th.dataset.bound)return;th.dataset.bound='1';th.classList.add('sortable');th.onclick=()=>{const tbody=table.tBodies[0];if(!tbody)return;const asc=th.dataset.dir!=='asc';[...table.querySelectorAll('thead th')].forEach(h=>{h.dataset.dir='';h.classList.remove('sort-asc','sort-desc')});th.dataset.dir=asc?'asc':'desc';th.classList.add(asc?'sort-asc':'sort-desc');const rows=[...tbody.rows];rows.sort((a,b)=>{let x=a.cells[col]?.textContent?.trim()||'',y=b.cells[col]?.textContent?.trim()||'';const nx=Number(x.replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٬,]/g,'')),ny=Number(y.replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٬,]/g,''));let c=Number.isFinite(nx)&&Number.isFinite(ny)?nx-ny:x.localeCompare(y,'fa',{numeric:true});return asc?c:-c});rows.forEach(r=>tbody.appendChild(r))}})})}
 
-const SERIES=[['talked','لید صحبت‌شده','#3fe0cd'],['opp','فرصت OPP','#f0b95a'],['calls','تماس','#7aa7ff'],['t8','T8','#b08cff'],['tickets','تیکت','#ff8b8b'],['total','فعالیت کل','#ffffff']];
-function chart(rows){
+const TREND_METRICS={
+ talked:{label:'لید صحبت‌شده',line:'#3fe0cd',avg:'#f6c85f'},
+ opp:{label:'فرصت OPP',line:'#f0b95a',avg:'#63b3ff'},
+ calls:{label:'تماس',line:'#7aa7ff',avg:'#ff9f68'},
+ t8:{label:'T8',line:'#b08cff',avg:'#65d68e'},
+ tickets:{label:'تیکت',line:'#ff8b8b',avg:'#6edbd0'},
+ total:{label:'فعالیت کل',line:'#ffffff',avg:'#f0b95a'}
+};
+const trendMetricState={weekly:'total',monthly:'total'};
+function smoothPath(points){
+ if(!points.length)return '';
+ if(points.length===1)return `M ${points[0][0]} ${points[0][1]}`;
+ let d=`M ${points[0][0]} ${points[0][1]}`;
+ for(let i=0;i<points.length-1;i++){
+  const p0=points[i-1]||points[i],p1=points[i],p2=points[i+1],p3=points[i+2]||p2;
+  const c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6;
+  const c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6;
+  d+=` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2[0]} ${p2[1]}`;
+ }
+ return d;
+}
+function trendChart(rows,metric='total',unitRows=[]){
  if(!rows||!rows.length)return '<div class="empty">داده‌ای برای نمودار وجود ندارد.</div>';
-
- const W=900,H=310,p={l:42,r:22,t:34,b:48},iw=W-p.l-p.r,ih=H-p.t-p.b;
- let max=1;
- rows.forEach(r=>SERIES.forEach(([k])=>max=Math.max(max,Number(r[k])||0)));
-
+ const meta=TREND_METRICS[metric]||TREND_METRICS.total;
+ const W=1100,H=330,p={l:48,r:24,t:34,b:52},iw=W-p.l-p.r,ih=H-p.t-p.b;
+ const unitAvg=(unitRows&&unitRows.length)?unitRows.reduce((s,r)=>s+Number(r[metric]||0),0)/unitRows.length:0;
+ let max=Math.max(1,unitAvg,...rows.map(r=>Number(r[metric]||0)));
+ max*=1.08;
  const x=i=>p.l+(rows.length===1?iw/2:i*iw/(rows.length-1));
  const y=v=>p.t+ih-(Number(v)||0)/max*ih;
-
  let grid='';
  for(let i=0;i<=4;i++){
-   const val=Math.round(max*i/4),yy=y(val);
-   grid+=`<line x1="${p.l}" x2="${W-p.r}" y1="${yy}" y2="${yy}" class="chart-gridline"/><text x="${p.l-8}" y="${yy+4}" text-anchor="end" class="chart-axis">${fa(val)}</text>`;
+  const val=max*i/4,yy=y(val);
+  grid+=`<line x1="${p.l}" x2="${W-p.r}" y1="${yy}" y2="${yy}" class="chart-gridline"/><text x="${p.l-8}" y="${yy+4}" text-anchor="end" class="chart-axis">${fa(Math.round(val))}</text>`;
  }
-
- let paths='';
- SERIES.forEach(([k,l,c])=>{
-   paths+=`<polyline points="${rows.map((r,i)=>`${x(i)},${y(r[k])}`).join(' ')}" fill="none" stroke="${c}" stroke-width="${k==='total'?3.3:2.2}" stroke-linejoin="round" stroke-linecap="round"/>`;
- });
-
+ const pts=rows.map((r,i)=>[x(i),y(r[metric])]);
+ const path=smoothPath(pts);
+ const avgY=y(unitAvg);
  const labels=rows.map((r,i)=>`<text x="${x(i)}" y="${H-18}" text-anchor="middle" class="chart-axis">${fmt(r.day)}</text>`).join('');
-
  const band=rows.length>1?iw/(rows.length-1):iw;
- const hitAreas=rows.map((r,i)=>{
-   const left=Math.max(p.l,x(i)-band/2);
-   const right=Math.min(W-p.r,x(i)+band/2);
-   const w=Math.max(12,right-left);
-   return `<rect class="chart-hit" x="${left}" y="${p.t}" width="${w}" height="${ih}" fill="transparent" data-i="${i}" />`;
- }).join('');
-
- return `
-   <div class="chart-legend">${SERIES.map(([k,l,c])=>`<span><i style="background:${c}"></i>${l}</span>`).join('')}</div>
-   <div class="chart-stage hover-stage" data-chart='${safe(JSON.stringify(rows))}'>
-     <div class="chart-tooltip"></div>
-     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${grid}${paths}${labels}${hitAreas}</svg>
-   </div>`;
+ const hit=rows.map((r,i)=>{const left=Math.max(p.l,x(i)-band/2),right=Math.min(W-p.r,x(i)+band/2);return `<rect class="trend-hit" x="${left}" y="${p.t}" width="${Math.max(12,right-left)}" height="${ih}" fill="transparent" data-i="${i}"/>`}).join('');
+ return `<div class="trend-chart-wrap" data-metric="${metric}" data-unit-avg="${unitAvg}" data-rows='${safe(JSON.stringify(rows))}' data-label="${safe(meta.label)}">
+  <div class="trend-legend"><span><i style="background:${meta.line}"></i>${meta.label}</span><span><i class="dash" style="border-color:${meta.avg}"></i>میانگین روزانه کل واحد: <b>${Number(unitAvg||0).toFixed(1)}</b></span></div>
+  <div class="chart-stage trend-hover-stage"><div class="chart-tooltip"></div><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${grid}<line x1="${p.l}" x2="${W-p.r}" y1="${avgY}" y2="${avgY}" stroke="${meta.avg}" stroke-width="2" stroke-dasharray="9 7"/><path d="${path}" fill="none" stroke="${meta.line}" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>${pts.map(([px,py])=>`<circle cx="${px}" cy="${py}" r="4" fill="${meta.line}" />`).join('')}${labels}${hit}</svg></div>
+ </div>`;
 }
-
+function bindTrendChartHover(root=document){
+ root.querySelectorAll('.trend-hover-stage').forEach(stage=>{
+  const wrap=stage.closest('.trend-chart-wrap');if(!wrap)return;
+  let rows=[];try{rows=JSON.parse(wrap.dataset.rows||'[]')}catch(e){}
+  const metric=wrap.dataset.metric||'total',label=wrap.dataset.label||'',avg=Number(wrap.dataset.unitAvg||0),tip=stage.querySelector('.chart-tooltip');if(!tip)return;
+  stage.querySelectorAll('.trend-hit').forEach(hit=>{
+   hit.onmouseenter=hit.onmousemove=e=>{const r=rows[Number(hit.dataset.i)]||{};tip.innerHTML=`<div class="ct-date">${fmt(r.day)}</div><div class="ct-grid"><span>${safe(label)}</span><b>${fa(r[metric])}</b><span>میانگین کل واحد</span><b>${avg.toFixed(1)}</b></div>`;const rect=stage.getBoundingClientRect();tip.style.display='block';tip.style.left=Math.min(rect.width-210,Math.max(8,e.clientX-rect.left-90))+'px';tip.style.top='52px';};
+   hit.onmouseleave=()=>{tip.style.display='none'};
+  });
+ });
+}
 
 const filterState={
   team:{search:'',teamLead:[],team:[],gender:[],role:[],businessUnit:[]},
