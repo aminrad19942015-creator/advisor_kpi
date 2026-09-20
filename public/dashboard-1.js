@@ -85,11 +85,13 @@ function smoothPath(points){
  }
  return d;
 }
-function trendChart(rows,metric='total',unitRows=[]){
+function trendChart(rows,metric='total',unitRows=[],benchmarkMode='unit',unitAdvisorCount=1){
  if(!rows||!rows.length)return '<div class="empty">داده‌ای برای نمودار وجود ندارد.</div>';
  const meta=TREND_METRICS[metric]||TREND_METRICS.total;
  const W=1100,H=330,p={l:48,r:24,t:34,b:52},iw=W-p.l-p.r,ih=H-p.t-p.b;
- const unitAvg=(unitRows&&unitRows.length)?unitRows.reduce((s,r)=>s+Number(r[metric]||0),0)/unitRows.length:0;
+ const unitTotalAvg=(unitRows&&unitRows.length)?unitRows.reduce((s,r)=>s+Number(r[metric]||0),0)/unitRows.length:0;
+ const unitAvg=benchmarkMode==='perPerson'?unitTotalAvg/Math.max(1,Number(unitAdvisorCount||1)):unitTotalAvg;
+ const benchmarkLabel=benchmarkMode==='perPerson'?'میانگین روزانه هر مشاور':'میانگین روزانه کل واحد';
  let max=Math.max(1,unitAvg,...rows.map(r=>Number(r[metric]||0)));
  max*=1.08;
  const x=i=>p.l+(rows.length===1?iw/2:i*iw/(rows.length-1));
@@ -106,7 +108,7 @@ function trendChart(rows,metric='total',unitRows=[]){
  const band=rows.length>1?iw/(rows.length-1):iw;
  const hit=rows.map((r,i)=>{const left=Math.max(p.l,x(i)-band/2),right=Math.min(W-p.r,x(i)+band/2);return `<rect class="trend-hit" x="${left}" y="${p.t}" width="${Math.max(12,right-left)}" height="${ih}" fill="transparent" data-i="${i}"/>`}).join('');
  return `<div class="trend-chart-wrap" data-metric="${metric}" data-unit-avg="${unitAvg}" data-rows='${safe(JSON.stringify(rows))}' data-label="${safe(meta.label)}">
-  <div class="trend-legend"><span><i style="background:${meta.line}"></i>${meta.label}</span><span><i class="dash" style="border-color:${meta.avg}"></i>میانگین روزانه کل واحد: <b>${Number(unitAvg||0).toFixed(1)}</b></span></div>
+  <div class="trend-legend"><span><i style="background:${meta.line}"></i>${meta.label}</span><span><i class="dash" style="border-color:${meta.avg}"></i>${benchmarkLabel}: <b>${fa(Number(unitAvg||0).toFixed(1))}</b></span></div>
   <div class="chart-stage trend-hover-stage"><div class="chart-tooltip"></div><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${grid}<line x1="${p.l}" x2="${W-p.r}" y1="${avgY}" y2="${avgY}" stroke="${meta.avg}" stroke-width="2" stroke-dasharray="9 7"/><path d="${path}" fill="none" stroke="${meta.line}" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>${pts.map(([px,py])=>`<circle cx="${px}" cy="${py}" r="4" fill="${meta.line}" />`).join('')}${labels}${hit}</svg></div>
  </div>`;
 }
@@ -114,9 +116,9 @@ function bindTrendChartHover(root=document){
  root.querySelectorAll('.trend-hover-stage').forEach(stage=>{
   const wrap=stage.closest('.trend-chart-wrap');if(!wrap)return;
   let rows=[];try{rows=JSON.parse(wrap.dataset.rows||'[]')}catch(e){}
-  const metric=wrap.dataset.metric||'total',label=wrap.dataset.label||'',avg=Number(wrap.dataset.unitAvg||0),tip=stage.querySelector('.chart-tooltip');if(!tip)return;
+  const metric=wrap.dataset.metric||'total',label=wrap.dataset.label||'',avg=Number(wrap.dataset.unitAvg||0),benchmarkLabel=wrap.dataset.benchmarkLabel||'میانگین روزانه کل واحد',tip=stage.querySelector('.chart-tooltip');if(!tip)return;
   stage.querySelectorAll('.trend-hit').forEach(hit=>{
-   hit.onmouseenter=hit.onmousemove=e=>{const r=rows[Number(hit.dataset.i)]||{};tip.innerHTML=`<div class="ct-date">${fmt(r.day)}</div><div class="ct-grid"><span>${safe(label)}</span><b>${fa(r[metric])}</b><span>میانگین کل واحد</span><b>${avg.toFixed(1)}</b></div>`;const rect=stage.getBoundingClientRect();tip.style.display='block';tip.style.left=Math.min(rect.width-210,Math.max(8,e.clientX-rect.left-90))+'px';tip.style.top='52px';};
+   hit.onmouseenter=hit.onmousemove=e=>{const r=rows[Number(hit.dataset.i)]||{};tip.innerHTML=`<div class="ct-date">${fmt(r.day)}</div><div class="ct-grid"><span>${safe(label)}</span><b>${fa(r[metric])}</b><span>${safe(benchmarkLabel)}</span><b>${fa(avg.toFixed(1))}</b></div>`;const rect=stage.getBoundingClientRect();tip.style.display='block';tip.style.left=Math.min(rect.width-210,Math.max(8,e.clientX-rect.left-90))+'px';tip.style.top='52px';};
    hit.onmouseleave=()=>{tip.style.display='none'};
   });
  });
