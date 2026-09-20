@@ -109,7 +109,6 @@ function renderOpen(){
    <div class="kpi"><div class="kpi-label">سرنخ‌های باز دست مشاوران</div><div class="kpi-value">${fa(k.total)}</div><div class="kpi-sub">منتسب به اعضای واحد</div></div>
    <div class="kpi"><div class="kpi-label">لیدهای اختصاص‌نیافته</div><div class="kpi-value">${fa(k.unassigned)}</div><div class="kpi-sub">واحد تجاری خالی</div></div>
    <div class="kpi"><div class="kpi-label">افراد دارای سرنخ</div><div class="kpi-value">${fa(k.owners)}</div></div>
-   <div class="kpi clickable" data-oldest-open="1"><div class="kpi-label">قدیمی‌ترین لید</div><div class="kpi-value">${fa(k.oldest)}</div><div class="kpi-sub">روز از تاریخ ثبت</div></div>
    <div class="kpi deadline-kpi clickable" data-deadline-type="حقیقی"><div class="kpi-label">حقیقی نزدیک سررسید</div><div class="kpi-value">${fa(k.nearDeadlineReal)}</div><div class="kpi-sub">سن ۱۵ تا ۱۸ روز</div></div>
    <div class="kpi deadline-kpi clickable" data-deadline-type="حقوقی"><div class="kpi-label">حقوقی نزدیک سررسید</div><div class="kpi-value">${fa(k.nearDeadlineLegal)}</div><div class="kpi-sub">سن ۵۷ تا ۶۰ روز</div></div>
   </div>
@@ -122,7 +121,6 @@ function renderOpen(){
 
  document.querySelectorAll('#openPage [data-f]').forEach(panel=>bindBars(panel,v=>loadOpenDetail(panel.dataset.f,v)));
  document.querySelectorAll('[data-open-owner]').forEach(el=>el.onclick=()=>loadOpenDetail('owner',el.dataset.openOwner));
- const oldestCard=document.querySelector('#openPage [data-oldest-open]');if(oldestCard)oldestCard.onclick=()=>loadOpenOldestDetails();
  document.querySelectorAll('#openPage [data-deadline-type]').forEach(el=>{el.onclick=()=>loadOpenDeadlineDetail(el.dataset.deadlineType,el.dataset.deadlineOwner||'');});
  bindOpenFilters();
  makeTableSortable($('openPage'));
