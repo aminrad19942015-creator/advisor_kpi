@@ -97,6 +97,24 @@ const filterState={
 };
 let filterOptions={team:{},open:{},periodCampaign:{daily:[],weekly:[],monthly:[]}};
 
+function syncedTeamOptions(current,mapping){
+  const members=(filterOptions.team&&filterOptions.team.members)||[];
+  const out={};
+  const entries=Object.entries(mapping);
+  for(const [stateKey,memberKey] of entries){
+    let rows=members;
+    for(const [otherStateKey,otherMemberKey] of entries){
+      if(otherStateKey===stateKey) continue;
+      const selected=Array.isArray(current[otherStateKey])?current[otherStateKey].filter(Boolean):[];
+      if(selected.length) rows=rows.filter(r=>selected.includes(r[otherMemberKey]||''));
+    }
+    const vals=[...new Set(rows.map(r=>r[memberKey]).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'fa',{numeric:true}));
+    const selected=Array.isArray(current[stateKey])?current[stateKey].filter(Boolean):[];
+    out[stateKey]=[...new Set([...selected,...vals])];
+  }
+  return out;
+}
+
 // Default state is intentionally empty = "همه".
 // No filter should be selected automatically on first load.
 function resetAllFilterState(){
