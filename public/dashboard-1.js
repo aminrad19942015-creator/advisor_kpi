@@ -43,6 +43,23 @@ const norm=v=>String(v??'').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[\u
 function toast(t){const el=$('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2400)}
 function bars(entries){if(!entries||!entries.length)return '<div class="empty">داده‌ای وجود ندارد.</div>';const max=entries[0][1]||1;return `<div class="bars">`+entries.map(([k,v])=>`<div class="bar-row clickable" data-v="${safe(k)}" title="${safe(k)}"><div class="bar-label">${safe(k)}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,v/max*100)}%"></div></div><div class="bar-value">${fa(v)}</div></div>`).join('')+`</div>`}
 function bindBars(root,handler){root.querySelectorAll('.bar-row').forEach(r=>r.onclick=()=>handler(r.dataset.v))}
+function donut(entries){
+ const rows=(entries||[]).filter(x=>Number(x[1])>0);
+ if(!rows.length)return '<div class="empty">داده‌ای برای نمودار وجود ندارد.</div>';
+ const total=rows.reduce((s,x)=>s+Number(x[1]||0),0),r=72,cx=100,cy=100,sw=28,C=2*Math.PI*r;
+ let off=0;
+ const segs=rows.map(([label,value],i)=>{
+  const n=Number(value||0),len=n/total*C,pct=n/total*100;
+  const html=`<circle class="donut-segment" cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--donut-${i%8})" stroke-width="${sw}" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" data-v="${safe(label)}" data-count="${n}" data-pct="${pct.toFixed(1)}"><title>${safe(label)}: ${fa(n)} (${pct.toFixed(1)}٪)</title></circle>`;
+  off+=len;return html;
+ }).join('');
+ const legend=rows.map(([label,value],i)=>`<button class="donut-legend-item" data-v="${safe(label)}"><i style="background:var(--donut-${i%8})"></i><span>${safe(label)}</span><b>${fa(value)}</b><small>${(Number(value)/total*100).toFixed(1)}٪</small></button>`).join('');
+ return `<div class="donut-wrap"><div class="donut-chart"><svg viewBox="0 0 200 200"><circle cx="100" cy="100" r="${r}" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="${sw}"/>${segs}</svg><div class="donut-center"><b>${fa(total)}</b><span>سرنخ</span></div></div><div class="donut-legend">${legend}</div></div>`;
+}
+function bindDonut(root,handler){
+ if(!root)return;
+ root.querySelectorAll('.donut-segment,.donut-legend-item').forEach(el=>el.onclick=()=>handler(el.dataset.v));
+}
 function rangeText(s){if(!s||!s.days||!s.days.length)return '—';return s.days.length===1?fmt(s.days[0]):fmt(s.days[0])+' تا '+fmt(s.days[s.days.length-1])}
 function reportBadge(label,text){return `<div class="report-date-badge"><span>${label}</span><b>${safe(text)}</b></div>`}
 function makeTableSortable(root=document){root.querySelectorAll('table.table').forEach(table=>{[...table.querySelectorAll('thead th')].forEach((th,col)=>{if(th.dataset.bound)return;th.dataset.bound='1';th.classList.add('sortable');th.onclick=()=>{const tbody=table.tBodies[0];if(!tbody)return;const asc=th.dataset.dir!=='asc';[...table.querySelectorAll('thead th')].forEach(h=>{h.dataset.dir='';h.classList.remove('sort-asc','sort-desc')});th.dataset.dir=asc?'asc':'desc';th.classList.add(asc?'sort-asc':'sort-desc');const rows=[...tbody.rows];rows.sort((a,b)=>{let x=a.cells[col]?.textContent?.trim()||'',y=b.cells[col]?.textContent?.trim()||'';const nx=Number(x.replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٬,]/g,'')),ny=Number(y.replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٬,]/g,''));let c=Number.isFinite(nx)&&Number.isFinite(ny)?nx-ny:x.localeCompare(y,'fa',{numeric:true});return asc?c:-c});rows.forEach(r=>tbody.appendChild(r))}})})}
