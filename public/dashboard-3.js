@@ -7,17 +7,18 @@ function applyTeamFilters(){
 let openDebounce;
 function debouncedApplyOpen(){clearTimeout(openDebounce);openDebounce=setTimeout(applyOpenFilters,300)}
 function bindOpenFilters(){
-  const o=filterOptions.open||{},f=filterState.open;
-  simpleMulti('ofAdvisor',o.advisor,f.advisor,v=>{f.advisor=v;debouncedApplyOpen()});
-  simpleMulti('ofRole',o.role,f.role,v=>{f.role=v;debouncedApplyOpen()});
-  simpleMulti('ofTeam',o.team,f.team,v=>{f.team=v;debouncedApplyOpen()});
-  simpleMulti('ofUnit',o.personUnit,f.personUnit,v=>{f.personUnit=v;debouncedApplyOpen()});
-  simpleMulti('ofType',o.leadType,f.leadType,v=>{f.leadType=v;debouncedApplyOpen()});
-  simpleMulti('ofReason',o.nextCallReason,f.nextCallReason,v=>{f.nextCallReason=v;debouncedApplyOpen()});
-  simpleMulti('ofRank',o.customerRank,f.customerRank,v=>{f.customerRank=v;debouncedApplyOpen()});
-  simpleMulti('ofCampaign',o.campaign,f.campaign,v=>{f.campaign=v;debouncedApplyOpen()});
-  simpleMulti('ofSource',o.source,f.source,v=>{f.source=v;debouncedApplyOpen()});
-  simpleMulti('ofStatus',o.lastStatus,f.lastStatus,v=>{f.lastStatus=v;debouncedApplyOpen()});
+  const dataOptions=filterOptions.open||{},f=filterState.open;
+  const teamOptions=syncedTeamOptions(f,{advisor:'name',role:'role',team:'team',personUnit:'businessUnit'});
+  simpleMulti('ofAdvisor',teamOptions.advisor,f.advisor,v=>{f.advisor=v;debouncedApplyOpen()});
+  simpleMulti('ofRole',teamOptions.role,f.role,v=>{f.role=v;debouncedApplyOpen()});
+  simpleMulti('ofTeam',teamOptions.team,f.team,v=>{f.team=v;debouncedApplyOpen()});
+  simpleMulti('ofUnit',teamOptions.personUnit,f.personUnit,v=>{f.personUnit=v;debouncedApplyOpen()});
+  simpleMulti('ofType',dataOptions.leadType,f.leadType,v=>{f.leadType=v;debouncedApplyOpen()});
+  simpleMulti('ofReason',dataOptions.nextCallReason,f.nextCallReason,v=>{f.nextCallReason=v;debouncedApplyOpen()});
+  simpleMulti('ofRank',dataOptions.customerRank,f.customerRank,v=>{f.customerRank=v;debouncedApplyOpen()});
+  simpleMulti('ofCampaign',dataOptions.campaign,f.campaign,v=>{f.campaign=v;debouncedApplyOpen()});
+  simpleMulti('ofSource',dataOptions.source,f.source,v=>{f.source=v;debouncedApplyOpen()});
+  simpleMulti('ofStatus',dataOptions.lastStatus,f.lastStatus,v=>{f.lastStatus=v;debouncedApplyOpen()});
   setTimeout(()=>{
     const a=$('ofAge');if(a){a.value=f.age||'';a.onchange=()=>{f.age=a.value;applyOpenFilters()}}
     $('ofClear').onclick=()=>{filterState.open={advisor:[],role:[],team:[],personUnit:[],age:'',leadType:[],nextCallReason:[],customerRank:[],campaign:[],source:[],lastStatus:[]};applyOpenFilters()}
@@ -30,7 +31,8 @@ function applyOpenFilters(){
 const periodDebounce={};
 function debouncedApplyPeriod(period){clearTimeout(periodDebounce[period]);periodDebounce[period]=setTimeout(()=>applyPeriodFilters(period),300)}
 function bindPeriodFilters(period){
-  const o=filterOptions.team||{},f=filterState[period];
+  const f=filterState[period];
+  const o=syncedTeamOptions(f,{advisor:'name',teamLead:'teamLead',team:'team',role:'role'});
   simpleMulti(period+'FAdvisor',o.advisor,f.advisor,v=>{f.advisor=v;debouncedApplyPeriod(period)});
   simpleMulti(period+'FLead',o.teamLead,f.teamLead,v=>{f.teamLead=v;debouncedApplyPeriod(period)});
   simpleMulti(period+'FTeam',o.team,f.team,v=>{f.team=v;debouncedApplyPeriod(period)});
