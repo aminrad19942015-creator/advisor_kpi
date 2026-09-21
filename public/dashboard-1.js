@@ -85,26 +85,32 @@ function smoothPath(points){
  }
  return d;
 }
-function trendChart(rows,metric='total',roleTrend={},roleCounts={}){
+function trendChart(rows,metric='total',unitRows=[],roleTrend={},roleCounts={},perPersonMode=false){
  if(!rows||!rows.length)return '<div class="empty">داده‌ای برای نمودار وجود ندارد.</div>';
  const meta=TREND_METRICS[metric]||TREND_METRICS.total;
  const W=1100,H=330,p={l:48,r:24,t:34,b:52},iw=W-p.l-p.r,ih=H-p.t-p.b;
- const defs=[
-  {key:'guide',label:'میانگین راهنما',color:'#f6c85f'},
-  {key:'advisor',label:'میانگین مشاور',color:'#63b3ff'},
-  {key:'senior',label:'میانگین مشاور ارشد و سرتیم',color:'#b08cff'}
- ];
- const avgs=defs.map(d=>{const rr=roleTrend[d.key]||[],daily=rr.length?rr.reduce((s,r)=>s+Number(r[metric]||0),0)/rr.length:0,count=Number(roleCounts[d.key]||0);return {...d,value:count?daily/count:0,count}});
- let max=Math.max(1,...avgs.map(x=>x.value),...rows.map(r=>Number(r[metric]||0)));max*=1.08;
+ let benchmarks=[];
+ if(perPersonMode){
+  const defs=[
+   {key:'guide',label:'میانگین راهنما',color:'#f6c85f'},
+   {key:'advisor',label:'میانگین مشاور',color:'#63b3ff'},
+   {key:'senior',label:'میانگین مشاور ارشد و سرتیم',color:'#b08cff'}
+  ];
+  benchmarks=defs.map(d=>{const rr=roleTrend[d.key]||[],daily=rr.length?rr.reduce((s,r)=>s+Number(r[metric]||0),0)/rr.length:0,count=Number(roleCounts[d.key]||0);return {...d,value:count?daily/count:0,count}});
+ }else{
+  const unitAvg=(unitRows&&unitRows.length)?unitRows.reduce((s,r)=>s+Number(r[metric]||0),0)/unitRows.length:0;
+  benchmarks=[{key:'unit',label:'میانگین روزانه کل واحد',color:'#f6c85f',value:unitAvg,count:1}];
+ }
+ let max=Math.max(1,...benchmarks.map(x=>x.value),...rows.map(r=>Number(r[metric]||0)));max*=1.08;
  const x=i=>p.l+(rows.length===1?iw/2:i*iw/(rows.length-1)),y=v=>p.t+ih-(Number(v)||0)/max*ih;
  let grid='';for(let i=0;i<=4;i++){const val=max*i/4,yy=y(val);grid+=`<line x1="${p.l}" x2="${W-p.r}" y1="${yy}" y2="${yy}" class="chart-gridline"/><text x="${p.l-8}" y="${yy+4}" text-anchor="end" class="chart-axis">${fa(Math.round(val))}</text>`}
  const pts=rows.map((r,i)=>[x(i),y(r[metric])]),path=smoothPath(pts);
  const labels=rows.map((r,i)=>`<text x="${x(i)}" y="${H-18}" text-anchor="middle" class="chart-axis">${fmt(r.day)}</text>`).join('');
  const band=rows.length>1?iw/(rows.length-1):iw;
  const hit=rows.map((r,i)=>{const left=Math.max(p.l,x(i)-band/2),right=Math.min(W-p.r,x(i)+band/2);return `<rect class="trend-hit" x="${left}" y="${p.t}" width="${Math.max(12,right-left)}" height="${ih}" fill="transparent" data-i="${i}"/>`}).join('');
- const benchmarkLines=avgs.filter(a=>a.count>0).map(a=>`<line x1="${p.l}" x2="${W-p.r}" y1="${y(a.value)}" y2="${y(a.value)}" stroke="${a.color}" stroke-width="2" stroke-dasharray="9 7"/>`).join('');
- const legend=avgs.filter(a=>a.count>0).map(a=>`<span><i class="dash" style="border-color:${a.color}"></i>${a.label}: <b>${fa(a.value.toFixed(1))}</b></span>`).join('');
- return `<div class="trend-chart-wrap" data-metric="${metric}" data-benchmarks='${safe(JSON.stringify(avgs))}' data-rows='${safe(JSON.stringify(rows))}' data-label="${safe(meta.label)}">
+ const benchmarkLines=benchmarks.filter(a=>a.count>0).map(a=>`<line x1="${p.l}" x2="${W-p.r}" y1="${y(a.value)}" y2="${y(a.value)}" stroke="${a.color}" stroke-width="2" stroke-dasharray="9 7"/>`).join('');
+ const legend=benchmarks.filter(a=>a.count>0).map(a=>`<span><i class="dash" style="border-color:${a.color}"></i>${a.label}: <b>${fa(a.value.toFixed(1))}</b></span>`).join('');
+ return `<div class="trend-chart-wrap" data-metric="${metric}" data-benchmarks='${safe(JSON.stringify(benchmarks))}' data-rows='${safe(JSON.stringify(rows))}' data-label="${safe(meta.label)}">
   <div class="trend-legend"><span><i style="background:${meta.line}"></i>${meta.label}</span>${legend}</div>
   <div class="chart-stage trend-hover-stage"><div class="chart-tooltip"></div><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${grid}${benchmarkLines}<path d="${path}" fill="none" stroke="${meta.line}" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>${pts.map(([px,py])=>`<circle cx="${px}" cy="${py}" r="4" fill="${meta.line}" />`).join('')}${labels}${hit}</svg></div>
  </div>`;
