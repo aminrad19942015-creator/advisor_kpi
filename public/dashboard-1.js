@@ -98,8 +98,12 @@ function trendChart(rows,metric='total',unitRows=[],roleTrend={},roleCounts={},p
   ];
   benchmarks=defs.map(d=>{const rr=roleTrend[d.key]||[],daily=rr.length?rr.reduce((s,r)=>s+Number(r[metric]||0),0)/rr.length:0,count=Number(roleCounts[d.key]||0);return {...d,value:count?daily/count:0,count}});
  }else{
-  const unitAvg=(unitRows&&unitRows.length)?unitRows.reduce((s,r)=>s+Number(r[metric]||0),0)/unitRows.length:0;
-  benchmarks=[{key:'unit',label:'میانگین روزانه کل واحد',color:'#f6c85f',value:unitAvg,count:1}];
+  const defs=[
+   {key:'guide',label:'میانگین کل راهنماها',color:'#f6c85f'},
+   {key:'advisor',label:'میانگین کل مشاوران',color:'#63b3ff'},
+   {key:'senior',label:'میانگین کل مشاور ارشد و سرتیم',color:'#b08cff'}
+  ];
+  benchmarks=defs.map(d=>{const rr=roleTrend[d.key]||[],daily=rr.length?rr.reduce((s,r)=>s+Number(r[metric]||0),0)/rr.length:0,count=Number(roleCounts[d.key]||0);return {...d,value:daily,count}});
  }
  let max=Math.max(1,...benchmarks.map(x=>x.value),...rows.map(r=>Number(r[metric]||0)));max*=1.08;
  const x=i=>p.l+(rows.length===1?iw/2:i*iw/(rows.length-1)),y=v=>p.t+ih-(Number(v)||0)/max*ih;
