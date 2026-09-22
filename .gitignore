@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.env
+.env.*
+!.env.example
+connector/.env
+connector/.env.local
+connector/runtime/
+connector/browser-profile/
