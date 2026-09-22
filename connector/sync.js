@@ -5,8 +5,8 @@ require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
 const CRM_ORIGIN = 'https://mxrm.emofid.com';
 const API_URL = process.env.DASHBOARD_API_URL || 'https://advisor-kpi.vercel.app/api/crm-shadow';
-const username = process.env.CRM_USERNAME;
-const password = process.env.CRM_PASSWORD;
+const username = (process.env.CRM_USERNAME || '').trim();
+const password = process.env.CRM_PASSWORD || '';
 const connectorToken = process.env.CRM_CONNECTOR_TOKEN;
 
 if (!username || !password || !connectorToken) {
@@ -32,15 +32,30 @@ async function authenticate(page) {
     const userInput = page.locator('#userNameInput');
     await userInput.waitFor({ state: 'visible', timeout: 30000 });
     await userInput.fill(username);
-    await userInput.press('Enter');
+
+    const submitButton = page.locator('#submitButton');
+    if (await submitButton.isVisible().catch(() => false)) {
+      await submitButton.click();
+    } else {
+      await userInput.press('Enter');
+    }
 
     const passwordInput = page.locator('#passwordInput');
-    await passwordInput.waitFor({ state: 'visible', timeout: 30000 });
+    try {
+      await passwordInput.waitFor({ state: 'visible', timeout: 30000 });
+    } catch {
+      const authError = await page.locator('#errorText, .error, [role="alert"]').filter({ visible: true }).first().textContent().catch(() => '');
+      throw new Error('ADFS password step did not appear.' + (authError ? ' ' + authError.trim() : ''));
+    }
+
     await passwordInput.fill(password);
 
     await Promise.all([
       page.waitForURL(url => url.hostname === 'mxrm.emofid.com', { timeout: 120000 }),
-      passwordInput.press('Enter')
+      (async () => {
+        if (await submitButton.isVisible().catch(() => false)) await submitButton.click();
+        else await passwordInput.press('Enter');
+      })()
     ]);
 
     console.log('ADFS login completed.');
