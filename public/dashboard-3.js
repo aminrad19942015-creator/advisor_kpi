@@ -107,7 +107,7 @@ function renderOpen(){
   <div class="kpis">
    <div class="kpi"><div class="kpi-label">کل سرنخ‌های باز</div><div class="kpi-value">${fa(k.allTotal)}</div><div class="kpi-sub">تمام رکوردهای منطبق با فیلتر</div></div>
    <div class="kpi"><div class="kpi-label">سرنخ‌های باز دست مشاوران</div><div class="kpi-value">${fa(k.total)}</div><div class="kpi-sub">منتسب به اعضای واحد</div></div>
-   <div class="kpi"><div class="kpi-label">لیدهای اختصاص‌نیافته</div><div class="kpi-value">${fa(k.unassigned)}</div><div class="kpi-sub">واحد تجاری خالی</div></div>
+   <div class="kpi"><div class="kpi-label">لیدهای اختصاص‌نیافته</div><div class="kpi-value">${fa(k.unassigned)}</div><div class="kpi-sub">بر اساس ۹ وضعیت تخصیص‌نیافته</div></div>
 
    <div class="kpi deadline-kpi clickable" data-deadline-type="حقیقی"><div class="kpi-label">حقیقی نزدیک سررسید</div><div class="kpi-value">${fa(k.nearDeadlineReal)}</div><div class="kpi-sub">سن ۱۵ تا ۱۸ روز</div></div>
    <div class="kpi deadline-kpi clickable" data-deadline-type="حقوقی"><div class="kpi-label">حقوقی نزدیک سررسید</div><div class="kpi-value">${fa(k.nearDeadlineLegal)}</div><div class="kpi-sub">سن ۵۷ تا ۶۰ روز</div></div>
