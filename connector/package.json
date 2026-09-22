@@ -1,0 +1,13 @@
+{
+  "name": "advisor-crm-connector",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "sync": "node sync.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "playwright": "^1.55.0"
+  }
+}
