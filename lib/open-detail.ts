@@ -1,6 +1,8 @@
 import { tursoSelect } from './turso';
+import { operationalOpenLeadsSource } from './crm-shadow';
 
 export async function getOpenLeadDetails(field:string,value:string){
+ const openSource=await operationalOpenLeadsSource();const openTable=openSource.table;
  const allowed:Record<string,string>={
   leadType:'lead_type',
   nextCallReason:'next_call_reason',
@@ -17,7 +19,7 @@ export async function getOpenLeadDetails(field:string,value:string){
  let actual=value;
  if(field==='nextCallReason'&&value==='بدون تسک')actual='';
  if(value==='بدون مقدار')actual='';
- return tursoSelect(`SELECT
+ return tursoSelect((`SELECT
    lead_number AS leadNumber,
    created_date AS createdDate,
    age_days AS ageDays,
@@ -34,5 +36,5 @@ export async function getOpenLeadDetails(field:string,value:string){
   FROM open_leads
   WHERE COALESCE(${column},'')=?
   ORDER BY age_days DESC
-  LIMIT 3000`,[actual]);
+  LIMIT 3000`).replaceAll('open_leads',openTable),[actual]);
 }
