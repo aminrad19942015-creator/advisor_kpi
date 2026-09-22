@@ -188,3 +188,22 @@ export async function compareCrmShadowToProduction(){
     onlyShadow:Number(onlyShadow?.[0]?.n||0)
   };
 }
+
+
+export async function operationalOpenLeadsSource(){
+  await ensureCrmShadowTables();
+  const meta=await tursoSelect("SELECT key,value FROM dashboard_meta WHERE key IN ('crm_shadow_last_sync_at','crm_shadow_row_count')");
+  const values=Object.fromEntries(meta.map((r:any)=>[r.key,r.value]));
+  const lastSyncAt=String(values.crm_shadow_last_sync_at||'');
+  const recordedRows=Number(values.crm_shadow_row_count||0);
+  const ts=Date.parse(lastSyncAt);
+  const ageMinutes=Number.isFinite(ts)?(Date.now()-ts)/60000:Number.POSITIVE_INFINITY;
+  const useCrm=recordedRows>0 && ageMinutes>=0 && ageMinutes<=90;
+  return {
+    table: useCrm ? SHADOW_TABLE : 'open_leads',
+    source: useCrm ? 'crm' : 'excel',
+    lastSyncAt,
+    ageMinutes:Number.isFinite(ageMinutes)?Math.round(ageMinutes*10)/10:null,
+    fallback:!useCrm
+  };
+}
