@@ -193,7 +193,26 @@ async function fetchDailyOpportunities(page,range){
     '_ms_advisorid_value','_ms_marketeruserid_value','ms_nationalnumber'
   ].join(',');
   const filter=`createdon ge ${range.start} and createdon lt ${range.end}`;
-  const rows=await fetchPaged(page,'Opportunities','/api/data/v9.0/opportunities?$select='+select+'&$filter='+encodeURIComponent(filter));
+  const oppUrl='/api/data/v9.0/opportunities?$select='+select+
+    '&$filter='+encodeURIComponent(filter)+
+    '&$expand=createdby($select=fullname,_businessunitid_value)';
+  const rawRows=await fetchPaged(page,'Opportunities',oppUrl);
+
+  const normalizeFa=v=>String(v??'')
+    .replace(/ي/g,'ی').replace(/ك/g,'ک')
+    .replace(/\\s+/g,' ').trim();
+  const allowedCreatorBusinessUnits=new Set([
+    'شعبه مشتریان ویژه',
+    'واحد شبکه فروش',
+    'شعبه مشاوره سرمایه گذاری'
+  ].map(normalizeFa));
+
+  const rows=rawRows.filter(r=>{
+    const creatorBu=normalizeFa(
+      r.createdby?.['_businessunitid_value@OData.Community.Display.V1.FormattedValue']
+    );
+    return allowedCreatorBusinessUnits.has(creatorBu);
+  });
   return rows.map(r=>{
     const title=r.name??'',upper=String(title).toUpperCase();
     const leadMatch=String(title).match(/LEAD-\d+/i);
@@ -206,8 +225,9 @@ async function fetchDailyOpportunities(page,range){
       status:formatted(r,'statecode'),
       potential_customer:formatted(r,'_customerid_value'),
       source:formatted(r,'ms_opportunitysourcecode'),
-      creator:formatted(r,'_createdby_value'),
+      creator:r.createdby?.fullname??formatted(r,'_createdby_value'),
       owner:formatted(r,'_ownerid_value'),
+      business_unit:r.createdby?.['_businessunitid_value@OData.Community.Display.V1.FormattedValue']??null,
       campaign_reference:formatted(r,'_campaignid_value'),
       ticket_source:formatted(r,'_ms_sourcecaseid_value'),
       sales_case_type:formatted(r,'ms_documenttypecode'),
