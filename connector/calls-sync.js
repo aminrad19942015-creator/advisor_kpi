@@ -1,9 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
+const { loadCrmConfig } = require('./config-client');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
-const CRM_ORIGIN = 'https://mxrm.emofid.com';
+let CRM_ORIGIN = 'https://mxrm.emofid.com';
 const shadowUrl = process.env.DASHBOARD_API_URL || 'https://advisor-kpi.vercel.app/api/crm-shadow';
 const API_URL = process.env.DASHBOARD_ACTIVITY_API_URL || shadowUrl.replace(/\/crm-shadow\/?$/,'/crm-activity');
 const username = (process.env.CRM_USERNAME || '').trim();
@@ -122,21 +123,19 @@ async function getUserDirectory(page){
   return map;
 }
 
-async function fetchCalls(page,range,label,userDirectory){
+async function fetchCalls(page,range,label,userDirectory,callConfig){
   const select=[
     'activityid','subject','_ms_partyuserid_value','_ms_callqueueid_value','scheduledstart','actualstart',
     '_ms_partycontactid_value','ms_tophonenumber','phonenumber','ms_parameters','ms_callduration','actualdurationminutes'
   ].join(',');
 
-  const filter=`scheduledstart ge ${range.start} and scheduledstart lt ${range.end}`;
-  const url='/api/data/v9.0/phonecalls?$select='+select+'&$filter='+encodeURIComponent(filter);
+  const dateField=String(callConfig?.dateField||'scheduledstart');
+  const entity=String(callConfig?.entity||'phonecalls');
+  const filter=`${dateField} ge ${range.start} and ${dateField} lt ${range.end}`;
+  const url='/api/data/v9.0/'+entity+'?$select='+select+'&$filter='+encodeURIComponent(filter);
   const raw=await fetchPaged(page,label,url);
 
-  const allowedUnits=new Set([
-    'شعبه مشتریان ویژه',
-    'واحد شبکه فروش',
-    'شعبه مشاوره سرمایه گذاری'
-  ].map(normalizeFa));
+  const allowedUnits=new Set((callConfig?.businessUnits||[]).map(normalizeFa));
 
   return raw.filter(row=>{
     const userId=String(row._ms_partyuserid_value||'').toLowerCase();
@@ -220,12 +219,19 @@ async function upload(datasets,range){
   const page=context.pages()[0]||await context.newPage();
 
   try{
+    const crmConfig=await loadCrmConfig(connectorToken);
+    CRM_ORIGIN=String(crmConfig.crmOrigin||CRM_ORIGIN).replace(/\/$/,'');
+    const callConfig=crmConfig.calls||{};
+    if(callConfig.enabled===false||String(callConfig.sourceMode||'crm').toLowerCase()!=='crm'){
+      console.log('Calls CRM sync skipped by admin configuration.');
+      return;
+    }
     await authenticate(page);
     const users=await getUserDirectory(page);
 
-    const calls=await fetchCalls(page,ranges.daily,'Daily calls',users);
-    const weeklyCalls=await fetchCalls(page,ranges.weekly,'Weekly calls',users);
-    const monthlyCalls=await fetchCalls(page,ranges.monthly,'Monthly calls',users);
+    const calls=await fetchCalls(page,ranges.daily,'Daily calls',users,callConfig);
+    const weeklyCalls=await fetchCalls(page,ranges.weekly,'Weekly calls',users,callConfig);
+    const monthlyCalls=await fetchCalls(page,ranges.monthly,'Monthly calls',users,callConfig);
 
     console.log('Filtered call rows:',{
       calls:calls.length,
