@@ -15,7 +15,9 @@ const TARGETS:Record<string,string>={
   calls:'daily_calls',
   weekly_calls:'weekly_calls',
   monthly_calls:'monthly_calls',
-  tickets:'daily_tickets'
+  tickets:'daily_tickets',
+  weekly_tickets:'weekly_tickets',
+  monthly_tickets:'monthly_tickets'
 };
 const PERSON_FIELD:Record<string,string>={
   leads:'owner',
@@ -27,7 +29,9 @@ const PERSON_FIELD:Record<string,string>={
   calls:'user',
   weekly_calls:'user',
   monthly_calls:'user',
-  tickets:'owner'
+  tickets:'owner',
+  weekly_tickets:'owner',
+  monthly_tickets:'owner'
 };
 
 function ident(name:string){
@@ -212,7 +216,7 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
     return {batchId,counts,lastSyncAt:now,sourceCheckedAt:sourceCheckedAt||now,range};
   }
   const chunks=await tursoSelect(`SELECT dataset,seq,payload_json FROM ${ident(STAGING)} WHERE batch_id=? ORDER BY dataset,seq`,[batchId]);
-  const grouped:Record<string,any[]>={leads:[],weekly_leads:[],monthly_leads:[],opportunities:[],weekly_opportunities:[],monthly_opportunities:[],calls:[],weekly_calls:[],monthly_calls:[],tickets:[]};
+  const grouped:Record<string,any[]>={leads:[],weekly_leads:[],monthly_leads:[],opportunities:[],weekly_opportunities:[],monthly_opportunities:[],calls:[],weekly_calls:[],monthly_calls:[],tickets:[],weekly_tickets:[],monthly_tickets:[]};
   for(const chunk of chunks){
     const dataset=String(chunk.dataset||'');
     if(!TARGETS[dataset]) continue;
@@ -231,7 +235,7 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   const team=new Set(teamRows.map((r:any)=>String(r.name||'').trim()).filter(Boolean));
   const filtered:Record<string,any[]>={};
   for(const key of requested){
-    if(key==='opportunities'||key==='weekly_opportunities'||key==='monthly_opportunities'||key==='calls'||key==='weekly_calls'||key==='monthly_calls'){
+    if(key==='opportunities'||key==='weekly_opportunities'||key==='monthly_opportunities'||key==='calls'||key==='weekly_calls'||key==='monthly_calls'||key==='tickets'||key==='weekly_tickets'||key==='monthly_tickets'){
       filtered[key]=grouped[key];
       continue;
     }
