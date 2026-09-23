@@ -10,6 +10,8 @@ const TARGETS:Record<string,string>={
   weekly_leads:'weekly_leads',
   monthly_leads:'monthly_leads',
   opportunities:'daily_opportunities',
+  weekly_opportunities:'weekly_opportunities',
+  monthly_opportunities:'monthly_opportunities',
   calls:'daily_calls',
   tickets:'daily_tickets'
 };
@@ -18,6 +20,8 @@ const PERSON_FIELD:Record<string,string>={
   weekly_leads:'owner',
   monthly_leads:'owner',
   opportunities:'creator',
+  weekly_opportunities:'creator',
+  monthly_opportunities:'creator',
   calls:'user',
   tickets:'owner'
 };
@@ -115,7 +119,7 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   if(!batchId) throw new Error('Missing CRM activity batch id.');
   await ensureCrmActivityTables();
   const chunks=await tursoSelect(`SELECT dataset,seq,payload_json FROM ${ident(STAGING)} WHERE batch_id=? ORDER BY dataset,seq`,[batchId]);
-  const grouped:Record<string,any[]>={leads:[],weekly_leads:[],monthly_leads:[],opportunities:[],calls:[],tickets:[]};
+  const grouped:Record<string,any[]>={leads:[],weekly_leads:[],monthly_leads:[],opportunities:[],weekly_opportunities:[],monthly_opportunities:[],calls:[],tickets:[]};
   for(const chunk of chunks){
     const dataset=String(chunk.dataset||'');
     if(!TARGETS[dataset]) continue;
@@ -132,7 +136,7 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   const team=new Set(teamRows.map((r:any)=>String(r.name||'').trim()).filter(Boolean));
   const filtered:Record<string,any[]>={};
   for(const key of Object.keys(TARGETS)){
-    if(key==='opportunities'){
+    if(key==='opportunities'||key==='weekly_opportunities'||key==='monthly_opportunities'){
       filtered[key]=grouped[key];
       continue;
     }
@@ -141,7 +145,7 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   }
 
   const counts:any={};
-  for(const key of ['leads','weekly_leads','monthly_leads','opportunities','calls','tickets']) counts[key]=await replaceTarget(TARGETS[key],filtered[key]);
+  for(const key of ['leads','weekly_leads','monthly_leads','opportunities','weekly_opportunities','monthly_opportunities','calls','tickets']) counts[key]=await replaceTarget(TARGETS[key],filtered[key]);
 
   const now=new Date().toISOString();
   const meta=[
