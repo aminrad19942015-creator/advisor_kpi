@@ -71,13 +71,13 @@ async function authenticate(page) {
   let probe;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      probe = await page.evaluate(async () => {
-        const r = await fetch(CRM_API_PREFIX+'/WhoAmI', {
+      probe = await page.evaluate(async apiPrefix => {
+        const r = await fetch(apiPrefix+'/WhoAmI', {
           credentials: 'include',
           headers: { Accept: 'application/json' }
         });
         return { status: r.status, text: await r.text() };
-      });
+      }, CRM_API_PREFIX);
       break;
     } catch {
       await page.waitForLoadState('domcontentloaded').catch(() => {});
