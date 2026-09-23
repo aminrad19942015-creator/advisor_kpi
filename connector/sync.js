@@ -94,7 +94,7 @@ async function fetchOpenLeads(page) {
   const select = [
     'leadid','ms_leadnumber','createdon','modifiedon','statecode','statuscode',
     'ms_nextcallreasontypecode','ms_followupby','ms_leadtypeleadtype','leadsourcecode',
-    'ms_leadsourceadditionalinfocode','ms_trafficsource','_ownerid_value','_createdby_value',
+    'ms_leadsourceadditionalinfocode','ms_trafficsource','_ownerid_value','_owninguser_value','_createdby_value',
     '_modifiedby_value','_campaignid_value','_ms_applicationid_value','_customerid_value'
   ].join(',');
 
@@ -156,7 +156,7 @@ function normalize(rows) {
     application: formatted(row, '_ms_applicationid_value'),
     customerAdvisor: row.customerid_contact?.['_ms_advisorid_value@OData.Community.Display.V1.FormattedValue'] ?? null,
     customerMarketer: row.customerid_contact?.['_ms_marketeruserid_value@OData.Community.Display.V1.FormattedValue'] ?? null,
-    businessUnit: row.owningbusinessunit?.name ?? null,
+    businessUnit: row._owninguser_value ? (row.owningbusinessunit?.name ?? null) : null,
     trafficSource: row.ms_trafficsource ?? null
   }));
 }
