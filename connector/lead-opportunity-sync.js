@@ -39,7 +39,7 @@ async function authenticate(page){
   console.log('ADFS login completed.');
  }
  await page.waitForTimeout(2500);
- const status=await page.evaluate(async()=>{const r=await fetch(CRM_API_PREFIX+'/WhoAmI',{credentials:'include',headers:{Accept:'application/json'}});return r.status;});
+ const status=await page.evaluate(async apiPrefix=>{const r=await fetch(apiPrefix+'/WhoAmI',{credentials:'include',headers:{Accept:'application/json'}});return r.status;},CRM_API_PREFIX);
  if(status!==200)throw new Error('WhoAmI failed HTTP '+status);
  console.log('CRM authentication validated.');
 }
