@@ -1,9 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
+const { loadCrmConfig } = require('./config-client');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
-const CRM_ORIGIN = 'https://mxrm.emofid.com';
+let CRM_ORIGIN = 'https://mxrm.emofid.com';
 const API_URL = process.env.DASHBOARD_API_URL || 'https://advisor-kpi.vercel.app/api/crm-shadow';
 const username = (process.env.CRM_USERNAME || '').trim();
 const password = process.env.CRM_PASSWORD || '';
@@ -90,7 +91,7 @@ async function authenticate(page) {
   console.log('CRM authentication validated.');
 }
 
-async function fetchOpenLeads(page) {
+async function fetchOpenLeads(page,entity='leads') {
   const select = [
     'leadid','ms_leadnumber','createdon','modifiedon','statecode','statuscode',
     'ms_nextcallreasontypecode','ms_followupby','ms_leadtypeleadtype','leadsourcecode',
@@ -98,7 +99,7 @@ async function fetchOpenLeads(page) {
     '_modifiedby_value','_campaignid_value','_ms_applicationid_value','_customerid_value'
   ].join(',');
 
-  let url = '/api/data/v9.0/leads?' +
+  let url = '/api/data/v9.0/' + entity + '?' +
     '$select=' + select +
     '&$filter=statecode eq 0' +
     '&$expand=owningbusinessunit($select=name),customerid_contact($select=fullname,customertypecode,_ms_advisorid_value,_ms_marketeruserid_value)';
@@ -205,8 +206,14 @@ async function pushShadow(rows, sourceCheckedAt) {
   const page = context.pages()[0] || await context.newPage();
 
   try {
+    const crmConfig=await loadCrmConfig(connectorToken);
+    CRM_ORIGIN=String(crmConfig.crmOrigin||CRM_ORIGIN).replace(/\/$/,'');
+    if(crmConfig.openLeads?.enabled===false||String(crmConfig.openLeads?.sourceMode||'crm').toLowerCase()!=='crm'){
+      console.log('Open Leads CRM sync skipped by admin configuration.');
+      return;
+    }
     await authenticate(page);
-    const crmRows = await fetchOpenLeads(page);
+    const crmRows = await fetchOpenLeads(page,String(crmConfig.openLeads?.entity||'leads'));
     const rows = normalize(crmRows);
     const result = await pushShadow(rows, new Date().toISOString());
 
