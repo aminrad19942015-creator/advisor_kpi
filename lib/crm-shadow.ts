@@ -187,7 +187,6 @@ export async function compareCrmShadowToProduction(){
 
 
 export async function operationalOpenLeadsSource(){
-  await ensureCrmShadowTables();
   const meta=await tursoSelect("SELECT key,value FROM dashboard_meta WHERE key IN ('crm_shadow_last_sync_at','crm_shadow_row_count')");
   const values=Object.fromEntries(meta.map((r:any)=>[r.key,r.value]));
   const lastSyncAt=String(values.crm_shadow_last_sync_at||'');
