@@ -27,14 +27,27 @@ function cleanNumber(v){
   const n=Number(v);
   return Number.isFinite(n)?n:null;
 }
-function iranYesterdayRange(){
+function iranActivityRanges(){
   const offsetMs=3.5*3600*1000;
-  const nowIran=new Date(Date.now()+offsetMs);
+  const nowUtc=Date.now();
+  const nowIran=new Date(nowUtc+offsetMs);
   const y=nowIran.getUTCFullYear(),m=nowIran.getUTCMonth(),d=nowIran.getUTCDate();
+  const hh=nowIran.getUTCHours(),mm=nowIran.getUTCMinutes(),ss=nowIran.getUTCSeconds(),ms=nowIran.getUTCMilliseconds();
   const todayIranMidnightUtc=Date.UTC(y,m,d)-offsetMs;
-  const start=new Date(todayIranMidnightUtc-24*3600*1000);
-  const end=new Date(todayIranMidnightUtc);
-  return {start:start.toISOString(),end:end.toISOString()};
+  return {
+    daily:{
+      start:new Date(todayIranMidnightUtc-24*3600*1000).toISOString(),
+      end:new Date(todayIranMidnightUtc).toISOString()
+    },
+    weekly:{
+      start:new Date(nowUtc-7*24*3600*1000).toISOString(),
+      end:new Date(nowUtc).toISOString()
+    },
+    monthly:{
+      start:new Date(Date.UTC(y,m-1,d,hh,mm,ss,ms)-offsetMs).toISOString(),
+      end:new Date(nowUtc).toISOString()
+    }
+  };
 }
 
 async function authenticate(page) {
@@ -92,7 +105,7 @@ async function fetchPaged(page,label,url){
   return all;
 }
 
-async function fetchDailyLeads(page,range){
+async function fetchLeadActivity(page,range,label='Leads'){
   const select=[
     'leadid','ms_leadnumber','createdon','modifiedon','statecode','statuscode',
     'ms_nextcallreasontypecode','ms_followupby','fullname','firstname','middlename','lastname',
@@ -104,7 +117,7 @@ async function fetchDailyLeads(page,range){
   const filter=`statecode ne 0 and modifiedon ge ${range.start} and modifiedon lt ${range.end}`;
   const url='/api/data/v9.0/leads?$select='+select+'&$filter='+encodeURIComponent(filter)+
     '&$expand=owningbusinessunit($select=name),customerid_contact($select=fullname,customertypecode,_ms_advisorid_value,_ms_marketeruserid_value)';
-  const rows=await fetchPaged(page,'Leads',url);
+  const rows=await fetchPaged(page,label,url);
 
   // Business rules for "daily leads" (فعالیت دیروز / سرنخ‌ها):
   // 1) modified yesterday (already enforced in the CRM query)
@@ -294,27 +307,52 @@ async function upload(datasets,range){
 }
 
 (async()=>{
-  const startedAt=new Date().toISOString(),range=iranYesterdayRange();
-  console.log('Iran yesterday UTC range:',range.start,'->',range.end);
+  const startedAt=new Date().toISOString(),ranges=iranActivityRanges(),range=ranges.daily;
+  console.log('Iran daily UTC range:',ranges.daily.start,'->',ranges.daily.end);
+  console.log('Iran weekly UTC range:',ranges.weekly.start,'->',ranges.weekly.end);
+  console.log('Iran monthly UTC range:',ranges.monthly.start,'->',ranges.monthly.end);
   const context=await chromium.launchPersistentContext(profileDir,{channel:'msedge',headless:true});
   const page=context.pages()[0]||await context.newPage();
   try{
     await authenticate(page);
-    const [leads,opportunities,calls,tickets]=await Promise.all([
-      fetchDailyLeads(page,range),
+    const [leads,weeklyLeads,monthlyLeads,opportunities,calls,tickets]=await Promise.all([
+      fetchLeadActivity(page,ranges.daily,'Daily leads'),
+      fetchLeadActivity(page,ranges.weekly,'Weekly leads'),
+      fetchLeadActivity(page,ranges.monthly,'Monthly leads'),
       fetchDailyOpportunities(page,range),
       fetchDailyCalls(page,range),
       fetchDailyTickets(page,range)
     ]);
-    console.log('Raw CRM rows:',{leads:leads.length,opportunities:opportunities.length,calls:calls.length,tickets:tickets.length});
-    const result=await upload({leads,opportunities,calls,tickets},range);
-    const status={status:'success',startedAt,finishedAt:new Date().toISOString(),range,raw:{leads:leads.length,opportunities:opportunities.length,calls:calls.length,tickets:tickets.length},stored:result.counts};
+    console.log('Raw CRM rows:',{
+      leads:leads.length,
+      weekly_leads:weeklyLeads.length,
+      monthly_leads:monthlyLeads.length,
+      opportunities:opportunities.length,
+      calls:calls.length,
+      tickets:tickets.length
+    });
+    const result=await upload({
+      leads,
+      weekly_leads:weeklyLeads,
+      monthly_leads:monthlyLeads,
+      opportunities,
+      calls,
+      tickets
+    },range);
+    const status={status:'success',startedAt,finishedAt:new Date().toISOString(),ranges,raw:{
+      leads:leads.length,
+      weekly_leads:weeklyLeads.length,
+      monthly_leads:monthlyLeads.length,
+      opportunities:opportunities.length,
+      calls:calls.length,
+      tickets:tickets.length
+    },stored:result.counts};
     fs.writeFileSync(path.join(runtimeDir,'last-activity-sync.json'),JSON.stringify(status,null,2),'utf8');
     console.log('');
     console.log('=== CRM DAILY ACTIVITY SYNC SUCCESS ===');
     console.log('Stored team rows:',result.counts);
   }catch(error){
-    fs.writeFileSync(path.join(runtimeDir,'last-activity-sync.json'),JSON.stringify({status:'failed',startedAt,finishedAt:new Date().toISOString(),range,error:String(error?.message||error)},null,2),'utf8');
+    fs.writeFileSync(path.join(runtimeDir,'last-activity-sync.json'),JSON.stringify({status:'failed',startedAt,finishedAt:new Date().toISOString(),ranges,error:String(error?.message||error)},null,2),'utf8');
     console.error('CRM daily activity sync failed:',error.message);
     process.exitCode=1;
   }finally{ await context.close(); }
