@@ -5,6 +5,7 @@ const { loadCrmConfig } = require('./config-client');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
 let CRM_ORIGIN = 'https://mxrm.emofid.com';
+let CRM_API_PREFIX = '/api/data/v9.0';
 const shadowUrl = process.env.DASHBOARD_API_URL || 'https://advisor-kpi.vercel.app/api/crm-shadow';
 const API_URL = process.env.DASHBOARD_ACTIVITY_API_URL || shadowUrl.replace(/\/crm-shadow\/?$/,'/crm-activity');
 const username = (process.env.CRM_USERNAME || '').trim();
@@ -72,7 +73,7 @@ async function authenticate(page){
   await page.waitForLoadState('domcontentloaded').catch(()=>{});
   await page.waitForTimeout(2500);
   const probe=await page.evaluate(async()=>{
-    const r=await fetch('/api/data/v9.0/WhoAmI',{credentials:'include',headers:{Accept:'application/json'}});
+    const r=await fetch(CRM_API_PREFIX+'/WhoAmI',{credentials:'include',headers:{Accept:'application/json'}});
     return {status:r.status,text:await r.text()};
   });
   if(probe.status!==200) throw new Error('WhoAmI failed with HTTP '+probe.status);
@@ -112,7 +113,7 @@ async function fetchPaged(page,label,url){
 }
 
 async function getUserDirectory(page){
-  const users=await fetchPaged(page,'Call users','/api/data/v9.0/systemusers?$select=systemuserid,fullname,_businessunitid_value');
+  const users=await fetchPaged(page,'Call users',CRM_API_PREFIX+'/systemusers?$select=systemuserid,fullname,_businessunitid_value');
   const map=new Map();
   for(const u of users){
     map.set(String(u.systemuserid||'').toLowerCase(),{
@@ -132,7 +133,7 @@ async function fetchCalls(page,range,label,userDirectory,callConfig){
   const dateField=String(callConfig?.dateField||'scheduledstart');
   const entity=String(callConfig?.entity||'phonecalls');
   const filter=`${dateField} ge ${range.start} and ${dateField} lt ${range.end}`;
-  const url='/api/data/v9.0/'+entity+'?$select='+select+'&$filter='+encodeURIComponent(filter);
+  const url=CRM_API_PREFIX+'/'+entity+'?$select='+select+'&$filter='+encodeURIComponent(filter);
   const raw=await fetchPaged(page,label,url);
 
   const allowedUnits=new Set((callConfig?.businessUnits||[]).map(normalizeFa));
@@ -221,6 +222,7 @@ async function upload(datasets,range){
   try{
     const crmConfig=await loadCrmConfig(connectorToken);
     CRM_ORIGIN=String(crmConfig.crmOrigin||CRM_ORIGIN).replace(/\/$/,'');
+    CRM_API_PREFIX='/api/data/'+String(crmConfig.apiVersion||'v9.0').replace(/^\/+|\/+$/g,'');
     const callConfig=crmConfig.calls||{};
     if(callConfig.enabled===false||String(callConfig.sourceMode||'crm').toLowerCase()!=='crm'){
       console.log('Calls CRM sync skipped by admin configuration.');
