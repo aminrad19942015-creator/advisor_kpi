@@ -46,7 +46,35 @@ function loadAdvisorTrend(period,advisor){
  }).getAdvisorTrend(period,advisor);
 }
 
-function switchPage(id){document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===id))}
+const periodInitialLoaded={daily:false,weekly:false,monthly:false};
+function loadInitialPeriod(period){
+ const pageId=period+'Page';
+ if(periodInitialLoaded[period])return;
+ setPageLoading(pageId,true);
+ google.script.run
+  .withFailureHandler(e=>{setPageLoading(pageId,false);toast('خطا در دریافت فیلترها: '+(e?.message||e||'خطای نامشخص'));})
+  .withSuccessHandler(options=>{
+    filterOptions.periodCampaign[period]=options||[];
+    google.script.run
+      .withFailureHandler(e=>{setPageLoading(pageId,false);toast('خطا در دریافت اطلاعات: '+(e?.message||e||'خطای نامشخص'));})
+      .withSuccessHandler(summary=>{
+        state.data[period]=summary;
+        periodInitialLoaded[period]=true;
+        renderPeriod(period,pageId,period==='daily'?'فعالیت دیروز':period==='weekly'?'فعالیت هفته':'فعالیت ماهانه');
+        bindChartHover($(pageId));
+        setPageLoading(pageId,false);
+      })
+      .getFilteredPeriodSummary(period,filterState[period]);
+  })
+  .getPeriodCampaignOptions(period);
+}
+function switchPage(id){
+ document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===id));
+ document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===id));
+ if(id==='dailyPage')loadInitialPeriod('daily');
+ if(id==='weeklyPage')loadInitialPeriod('weekly');
+ if(id==='monthlyPage')loadInitialPeriod('monthly');
+}
 document.querySelectorAll('.nav-item').forEach(b=>b.onclick=()=>switchPage(b.dataset.page));
 
 function renderAll(){
@@ -56,21 +84,26 @@ function renderAll(){
  let done=0;
  function finish(){
    done++;
-   if(done<5)return;
+   if(done<2)return;
    google.script.run
     .withFailureHandler(e=>{document.querySelector('.loading-card p').textContent='خطا در اعمال فیلتر پیش‌فرض سرنخ‌های باز: '+(e.message||e)})
     .withSuccessHandler(openSummary=>{
       state.data.open=openSummary;
-      renderTeam();renderOpen();renderPeriod('daily','dailyPage','فعالیت دیروز');renderPeriod('weekly','weeklyPage','فعالیت هفته');renderPeriod('monthly','monthlyPage','فعالیت ماهانه');makeTableSortable();bindChartHover();
+      renderTeam();
+      renderOpen();
+      makeTableSortable();
       $('loadingScreen').style.display='none';
     })
     .getOpenFilteredSummary(filterState.open);
  }
- google.script.run.withSuccessHandler(o=>{filterOptions.team=o||{};finish()}).getTeamFilterOptions();
- google.script.run.withSuccessHandler(o=>{filterOptions.open=o||{};finish()}).getOpenFilterOptions();
- ['daily','weekly','monthly'].forEach(period=>{
-   google.script.run.withSuccessHandler(o=>{filterOptions.periodCampaign[period]=o||[];finish()}).getPeriodCampaignOptions(period);
- });
+ google.script.run
+  .withFailureHandler(e=>{document.querySelector('.loading-card p').textContent='خطا در دریافت فیلتر تیم: '+(e.message||e)})
+  .withSuccessHandler(o=>{filterOptions.team=o||{};finish()})
+  .getTeamFilterOptions();
+ google.script.run
+  .withFailureHandler(e=>{document.querySelector('.loading-card p').textContent='خطا در دریافت فیلتر سرنخ‌ها: '+(e.message||e)})
+  .withSuccessHandler(o=>{filterOptions.open=o||{};finish()})
+  .getOpenFilterOptions();
 }
 
 google.script.run
