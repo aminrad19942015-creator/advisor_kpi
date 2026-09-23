@@ -184,7 +184,7 @@ async function fetchLeadActivity(page,range,label='Leads'){
   }));
 }
 
-async function fetchDailyOpportunities(page,range){
+async function fetchOpportunityActivity(page,range,label='Opportunities'){
   const select=[
     'opportunityid','ms_opportunitynumber','name','createdon','statecode','statuscode',
     '_customerid_value','ms_opportunitysourcecode','_createdby_value','_ownerid_value',
@@ -196,7 +196,7 @@ async function fetchDailyOpportunities(page,range){
   const oppUrl='/api/data/v9.0/opportunities?$select='+select+
     '&$filter='+encodeURIComponent(filter)+
     '&$expand=createdby($select=fullname,_businessunitid_value)';
-  const rawRows=await fetchPaged(page,'Opportunities',oppUrl);
+  const rawRows=await fetchPaged(page,label,oppUrl);
 
   const normalizeFa=v=>String(v??'')
     .replace(/ي/g,'ی').replace(/ك/g,'ک')
@@ -335,11 +335,13 @@ async function upload(datasets,range){
   const page=context.pages()[0]||await context.newPage();
   try{
     await authenticate(page);
-    const [leads,weeklyLeads,monthlyLeads,opportunities,calls,tickets]=await Promise.all([
+    const [leads,weeklyLeads,monthlyLeads,opportunities,weeklyOpportunities,monthlyOpportunities,calls,tickets]=await Promise.all([
       fetchLeadActivity(page,ranges.daily,'Daily leads'),
       fetchLeadActivity(page,ranges.weekly,'Weekly leads'),
       fetchLeadActivity(page,ranges.monthly,'Monthly leads'),
-      fetchDailyOpportunities(page,range),
+      fetchOpportunityActivity(page,ranges.daily,'Daily opportunities'),
+      fetchOpportunityActivity(page,ranges.weekly,'Weekly opportunities'),
+      fetchOpportunityActivity(page,ranges.monthly,'Monthly opportunities'),
       fetchDailyCalls(page,range),
       fetchDailyTickets(page,range)
     ]);
@@ -348,6 +350,8 @@ async function upload(datasets,range){
       weekly_leads:weeklyLeads.length,
       monthly_leads:monthlyLeads.length,
       opportunities:opportunities.length,
+      weekly_opportunities:weeklyOpportunities.length,
+      monthly_opportunities:monthlyOpportunities.length,
       calls:calls.length,
       tickets:tickets.length
     });
@@ -356,6 +360,8 @@ async function upload(datasets,range){
       weekly_leads:weeklyLeads,
       monthly_leads:monthlyLeads,
       opportunities,
+      weekly_opportunities:weeklyOpportunities,
+      monthly_opportunities:monthlyOpportunities,
       calls,
       tickets
     },range);
@@ -364,6 +370,8 @@ async function upload(datasets,range){
       weekly_leads:weeklyLeads.length,
       monthly_leads:monthlyLeads.length,
       opportunities:opportunities.length,
+      weekly_opportunities:weeklyOpportunities.length,
+      monthly_opportunities:monthlyOpportunities.length,
       calls:calls.length,
       tickets:tickets.length
     },stored:result.counts};
