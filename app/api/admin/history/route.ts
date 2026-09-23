@@ -5,7 +5,7 @@ import { tursoBatch,tursoSelect } from '../../../../lib/turso';
 export const runtime='nodejs';
 
 async function ensure(){
- await tursoBatch([{sql:'CREATE TABLE IF NOT EXISTS admin_import_history (id INTEGER PRIMARY KEY AUTOINCREMENT,file_name TEXT NOT NULL,dataset TEXT NOT NULL,target_table TEXT NOT NULL,rows INTEGER NOT NULL,verified_rows INTEGER NOT NULL,data_version TEXT,synced_at TEXT NOT NULL,status TEXT NOT NULL)'}]);
+ await tursoBatch([{sql:'CREATE TABLE IF NOT EXISTS admin_import_history (id BIGSERIAL PRIMARY KEY,file_name TEXT NOT NULL,dataset TEXT NOT NULL,target_table TEXT NOT NULL,rows INTEGER NOT NULL,verified_rows INTEGER NOT NULL,data_version TEXT,synced_at TEXT NOT NULL,status TEXT NOT NULL)'}]);
 }
 
 export async function GET(){
