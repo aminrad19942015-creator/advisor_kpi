@@ -29,7 +29,7 @@ export async function getTeamSummary(filters:any={}){
 
 export async function getTeamFilterOptions(){
  const [members,...res]=await Promise.all([
-  tursoSelect("SELECT name,team_lead AS "teamLead",team,gender,role,business_unit AS "businessUnit" FROM team_members ORDER BY name"),
+  tursoSelect(`SELECT name,team_lead AS "teamLead",team,gender,role,business_unit AS "businessUnit" FROM team_members ORDER BY name`),
   ...['team_lead','team','gender','role','business_unit','name'].map(c=>tursoSelect(`SELECT DISTINCT ${c} value FROM team_members WHERE COALESCE(${c},'')<>'' ORDER BY value`))
  ]);
  const vals=(x:any[])=>x.map(r=>r.value);
