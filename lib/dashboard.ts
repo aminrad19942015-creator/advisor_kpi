@@ -22,14 +22,14 @@ export async function getTeamSummary(filters:any={}){
  where+=sqlIn('gender',norm(filters.gender),args);
  where+=sqlIn('role',norm(filters.role),args);
  where+=sqlIn('business_unit',norm(filters.businessUnit),args);
- const [rows]=await tursoBatch([{sql:`SELECT name,personnel_code AS personnelCode,email,team_lead AS teamLead,team,gender,role,business_unit AS businessUnit FROM team_members ${where} ORDER BY name`,args}]);
+ const [rows]=await tursoBatch([{sql:`SELECT name,personnel_code AS "personnelCode",email,team_lead AS "teamLead",team,gender,role,business_unit AS "businessUnit" FROM team_members ${where} ORDER BY name`,args}]);
  const countPairs=(field:string)=>{const m:any={};for(const r of rows){const k=r[field]||'بدون مقدار';m[k]=(m[k]||0)+1}return Object.keys(m).map(k=>[k,m[k]]).sort((a:any,b:any)=>b[1]-a[1])};
  return {rows,kpis:{total:rows.length,teamLeads:rows.filter((x:any)=>x.role==='تیم لید').length,teams:new Set(rows.map((x:any)=>x.team).filter(Boolean)).size,advisors:rows.filter((x:any)=>String(x.role||'').includes('مشاور')||String(x.role||'').includes('راهنما')).length,women:rows.filter((x:any)=>x.gender==='خانم').length},roleCounts:countPairs('role'),unitCounts:countPairs('businessUnit')};
 }
 
 export async function getTeamFilterOptions(){
  const [members,...res]=await Promise.all([
-  tursoSelect("SELECT name,team_lead AS teamLead,team,gender,role,business_unit AS businessUnit FROM team_members ORDER BY name"),
+  tursoSelect("SELECT name,team_lead AS "teamLead",team,gender,role,business_unit AS "businessUnit" FROM team_members ORDER BY name"),
   ...['team_lead','team','gender','role','business_unit','name'].map(c=>tursoSelect(`SELECT DISTINCT ${c} value FROM team_members WHERE COALESCE(${c},'')<>'' ORDER BY value`))
  ]);
  const vals=(x:any[])=>x.map(r=>r.value);
@@ -93,5 +93,5 @@ export async function getOpenNearDeadlineDetails(leadType:string,owner:string,fi
  let where=" WHERE TRIM(COALESCE(o.lead_type,''))=? AND o.age_days BETWEEN ? AND ?";
  if(owner){where+=' AND o.owner=?';args.push(owner)}
  where+=sqlIn('o.owner',norm(filters.advisor),args);where+=sqlIn('o.lead_type',norm(filters.leadType),args);where+=sqlIn('o.customer_rank',norm(filters.customerRank),args);where+=sqlIn('o.campaign',norm(filters.campaign),args);where+=sqlIn('o.last_status',norm(filters.lastStatus),args);where+=sqlIn('o.source',norm(filters.source),args);
- return tursoSelect((`SELECT o.lead_number AS leadNumber,o.created_date AS createdDate,o.age_days AS ageDays,CASE WHEN TRIM(COALESCE(o.lead_type,''))='حقیقی' THEN 18-o.age_days WHEN TRIM(COALESCE(o.lead_type,''))='حقوقی' THEN 60-o.age_days END AS remainingDays,o.customer_rank AS customerRank,o.last_status AS lastStatus,o.next_call_reason AS nextCallReason,o.customer_name AS customerName,o.owner,o.lead_type AS leadType,o.source,o.campaign,o.source_software AS sourceSoftware,o.business_unit AS businessUnit FROM open_leads o ${where} ORDER BY remainingDays ASC,o.age_days DESC,o.owner LIMIT 4000`).replaceAll('open_leads',openTable),args);
+ return tursoSelect((`SELECT o.lead_number AS leadNumber,o.created_date AS createdDate,o.age_days AS ageDays,CASE WHEN TRIM(COALESCE(o.lead_type,''))='حقیقی' THEN 18-o.age_days WHEN TRIM(COALESCE(o.lead_type,''))='حقوقی' THEN 60-o.age_days END AS remainingDays,o.customer_rank AS customerRank,o.last_status AS lastStatus,o.next_call_reason AS nextCallReason,o.customer_name AS customerName,o.owner,o.lead_type AS leadType,o.source,o.campaign,o.source_software AS sourceSoftware,o.business_unit AS "businessUnit" FROM open_leads o ${where} ORDER BY remainingDays ASC,o.age_days DESC,o.owner LIMIT 4000`).replaceAll('open_leads',openTable),args);
 }
