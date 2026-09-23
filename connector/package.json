@@ -4,7 +4,8 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "sync": "node sync.js"
+    "sync": "node sync.js",
+    "discover-activity": "node discover-activity.js"
   },
   "dependencies": {
     "dotenv": "^17.2.1",
