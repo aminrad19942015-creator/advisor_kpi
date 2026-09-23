@@ -1,4 +1,4 @@
-import { tursoBatch, tursoSelect } from './turso';
+import { tursoBatch, tursoSelect, databaseProvider } from './turso';
 import { operationalOpenLeadsSource } from './crm-shadow';
 
 const pairs=(rows:any[],k:string,c:string)=>(rows||[]).map(r=>[r[k]||'بدون مقدار',Number(r[c]||0)]);
@@ -11,7 +11,7 @@ export async function getMeta(){
   tursoSelect("SELECT value FROM dashboard_meta WHERE key='data_version' LIMIT 1").catch(()=>[]),
   tursoSelect("SELECT value FROM dashboard_meta WHERE key='last_sync_at' LIMIT 1").catch(()=>[])
  ]);
- return {source:'Turso',dataVersion:v?.[0]?.value||'legacy',lastSyncAt:s?.[0]?.value||'',generatedAt:new Date().toISOString()};
+ return {source:databaseProvider(),dataVersion:v?.[0]?.value||'legacy',lastSyncAt:s?.[0]?.value||'',generatedAt:new Date().toISOString()};
 }
 
 export async function getTeamSummary(filters:any={}){
