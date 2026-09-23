@@ -30,7 +30,13 @@ export async function POST(req:NextRequest){
   const method=String(body?.method||'');
   const fn=handlers[method];
   if(!fn)return NextResponse.json({ok:false,error:`RPC method not migrated yet: ${method}`},{status:501});
-  const result=await fn(Array.isArray(body?.args)?body.args:[]);
+  const started=Date.now();
+  console.log('[rpc:start]',method);
+  const result=await Promise.race([
+    fn(Array.isArray(body?.args)?body.args:[]),
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error('RPC timeout: '+method)),15000))
+  ]);
+  console.log('[rpc:end]',method,Date.now()-started);
   return NextResponse.json({ok:true,result},{headers:{'cache-control':'no-store'}});
  }catch(error:any){
   return NextResponse.json({ok:false,error:error?.message||String(error)},{status:500});
