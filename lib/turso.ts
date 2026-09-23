@@ -19,14 +19,10 @@ function arg(v:unknown){
 function cell(c:any){if(!c||c.type==='null')return null;if(c.type==='integer'||c.type==='float')return Number(c.value);return c.value;}
 function rows(item:any){const d=item?.response?.result;if(!d)return [];const cols=(d.cols||[]).map((c:any)=>c.name);return (d.rows||[]).map((r:any[])=>Object.fromEntries(cols.map((n:string,i:number)=>[n,cell(r[i])])));}
 
-let pg:any;
 function pgClient(){
- if(!pg){
-  const url=process.env.SUPABASE_DATABASE_URL;
-  if(!url) throw new Error('SUPABASE_DATABASE_URL is not configured.');
-  pg=postgres(url,{max:1,idle_timeout:10,connect_timeout:10,prepare:false});
- }
- return pg;
+ const url=process.env.SUPABASE_DATABASE_URL;
+ if(!url) throw new Error('SUPABASE_DATABASE_URL is not configured.');
+ return postgres(url,{max:1,idle_timeout:5,connect_timeout:10,max_lifetime:60,prepare:false});
 }
 function pgSql(input:string){
  if(/^\s*BEGIN\s+IMMEDIATE\s*$/i.test(input))return 'BEGIN';
@@ -49,18 +45,22 @@ async function pgExec(client:any,statement:TursoStatement):Promise<any[]>{
 }
 async function postgresBatch(statements:TursoStatement[]):Promise<any[][]>{
  const sql=pgClient();
- const explicit=statements.length>=2 && /^\s*BEGIN(?:\s+IMMEDIATE)?\s*$/i.test(statements[0].sql) && /^\s*COMMIT\s*$/i.test(statements[statements.length-1].sql);
- if(explicit){
-  return sql.begin(async (tx:any)=>{
-   const out:any[]=[[]];
-   for(const s of statements.slice(1,-1))out.push(await pgExec(tx,s));
-   out.push([]);
-   return out;
-  });
+ try{
+  const explicit=statements.length>=2 && /^\s*BEGIN(?:\s+IMMEDIATE)?\s*$/i.test(statements[0].sql) && /^\s*COMMIT\s*$/i.test(statements[statements.length-1].sql);
+  if(explicit){
+   return await sql.begin(async (tx:any)=>{
+    const out:any[]=[[]];
+    for(const s of statements.slice(1,-1))out.push(await pgExec(tx,s));
+    out.push([]);
+    return out;
+   });
+  }
+  const out:any[][]=[];
+  for(const s of statements) out.push(await pgExec(sql,s));
+  return out;
+ } finally {
+  await sql.end({timeout:1}).catch(()=>{});
  }
- const out:any[][]=[];
- for(const s of statements) out.push(await pgExec(sql,s));
- return out;
 }
 
 export function databaseProvider(){return usePostgres()?'Supabase':'Turso';}
