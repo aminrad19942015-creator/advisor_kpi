@@ -132,6 +132,10 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   const team=new Set(teamRows.map((r:any)=>String(r.name||'').trim()).filter(Boolean));
   const filtered:Record<string,any[]>={};
   for(const key of Object.keys(TARGETS)){
+    if(key==='opportunities'){
+      filtered[key]=grouped[key];
+      continue;
+    }
     const person=PERSON_FIELD[key];
     filtered[key]=grouped[key].filter(r=>team.has(String(r?.[person]||'').trim()));
   }
