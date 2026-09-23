@@ -119,9 +119,98 @@ async function replaceTarget(target:string,rows:any[]){
   }
 }
 
+
+async function replaceCallsFromStaging(batchId:string,dataset:string,target:string,expectedRows:number){
+  const countRows=await tursoSelect(
+    `SELECT COALESCE(SUM(jsonb_array_length(payload_json::jsonb)),0) AS n
+     FROM ${ident(STAGING)} WHERE batch_id=? AND dataset=?`,
+    [batchId,dataset]
+  );
+  const actual=Number(countRows?.[0]?.n||0);
+  if(actual!==expectedRows){
+    throw new Error(`CRM activity row-count mismatch for ${dataset}: expected ${expectedRows}, received ${actual}.`);
+  }
+
+  const stage=`stg_${target}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+  const qs=ident(stage),qt=ident(target);
+
+  try{
+    await tursoBatch([
+      {sql:`DROP TABLE IF EXISTS ${qs}`},
+      {sql:`CREATE TABLE ${qs} AS SELECT * FROM ${qt} WHERE FALSE`},
+      {sql:`
+        INSERT INTO ${qs}(
+          call_id,subject,"user",queue,planned_start,start_date,customer,customer_rank,
+          destination_number,phone_number,parameters,duration,business_unit,lead_number
+        )
+        SELECT
+          j->>'call_id',
+          j->>'subject',
+          j->>'user',
+          j->>'queue',
+          j->>'planned_start',
+          j->>'start_date',
+          j->>'customer',
+          j->>'customer_rank',
+          j->>'destination_number',
+          j->>'phone_number',
+          j->>'parameters',
+          NULLIF(j->>'duration','')::numeric,
+          j->>'business_unit',
+          j->>'lead_number'
+        FROM ${ident(STAGING)} s
+        CROSS JOIN LATERAL jsonb_array_elements(s.payload_json::jsonb) j
+        WHERE s.batch_id=? AND s.dataset=?
+      `,args:[batchId,dataset]},
+      {sql:'BEGIN IMMEDIATE'},
+      {sql:`DELETE FROM ${qt}`},
+      {sql:`
+        INSERT INTO ${qt}(
+          call_id,subject,"user",queue,planned_start,start_date,customer,customer_rank,
+          destination_number,phone_number,parameters,duration,business_unit,lead_number
+        )
+        SELECT
+          call_id,subject,"user",queue,planned_start,start_date,customer,customer_rank,
+          destination_number,phone_number,parameters,duration,business_unit,lead_number
+        FROM ${qs}
+      `},
+      {sql:`DROP TABLE ${qs}`},
+      {sql:'COMMIT'}
+    ]);
+    return actual;
+  }catch(e){
+    await tursoBatch([{sql:`DROP TABLE IF EXISTS ${qs}`}]).catch(()=>{});
+    throw e;
+  }
+}
+
 export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourceCheckedAt?:string,range?:any){
   if(!batchId) throw new Error('Missing CRM activity batch id.');
   await ensureCrmActivityTables();
+
+  const requestedKeys=Object.keys(expected||{}).filter(key=>TARGETS[key]);
+  const callKeys=new Set(['calls','weekly_calls','monthly_calls']);
+  if(requestedKeys.length && requestedKeys.every(key=>callKeys.has(key))){
+    const counts:any={};
+    for(const key of requestedKeys){
+      counts[key]=await replaceCallsFromStaging(batchId,key,TARGETS[key],Number(expected?.[key]||0));
+    }
+
+    const now=new Date().toISOString();
+    const meta=[
+      ['crm_activity_last_sync_at',now],
+      ['crm_activity_source_checked_at',sourceCheckedAt||now],
+      ['crm_activity_range_start',String(range?.start||'')],
+      ['crm_activity_range_end',String(range?.end||'')],
+      ['crm_activity_counts',JSON.stringify(counts)]
+    ];
+    await tursoBatch(meta.map(([key,value])=>({
+      sql:"INSERT INTO dashboard_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      args:[key,value]
+    })));
+    await tursoBatch([{sql:`DELETE FROM ${ident(STAGING)} WHERE batch_id=?`,args:[batchId]}]);
+    return {batchId,counts,lastSyncAt:now,sourceCheckedAt:sourceCheckedAt||now,range};
+  }
   const chunks=await tursoSelect(`SELECT dataset,seq,payload_json FROM ${ident(STAGING)} WHERE batch_id=? ORDER BY dataset,seq`,[batchId]);
   const grouped:Record<string,any[]>={leads:[],weekly_leads:[],monthly_leads:[],opportunities:[],weekly_opportunities:[],monthly_opportunities:[],calls:[],weekly_calls:[],monthly_calls:[],tickets:[]};
   for(const chunk of chunks){
