@@ -242,27 +242,49 @@ async function fetchOpportunityActivity(page,range,label='Opportunities'){
   });
 }
 
-async function fetchDailyCalls(page,range){
+async function fetchCallActivity(page,range,label='Calls'){
   const select=[
     'activityid','subject','_ms_partyuserid_value','_ms_callqueueid_value','scheduledstart','actualstart',
     '_ms_partycontactid_value','ms_tophonenumber','phonenumber','ms_parameters','ms_callduration','actualdurationminutes'
   ].join(',');
-  const filter=`actualstart ge ${range.start} and actualstart lt ${range.end}`;
-  const rows=await fetchPaged(page,'Calls','/api/data/v9.0/phonecalls?$select='+select+'&$filter='+encodeURIComponent(filter));
+  const filter=`scheduledstart ge ${range.start} and scheduledstart lt ${range.end}`;
+  const callUrl='/api/data/v9.0/phonecalls?$select='+select+
+    '&$filter='+encodeURIComponent(filter)+
+    '&$expand=ms_partyuserid($select=fullname,_businessunitid_value)';
+  const rawRows=await fetchPaged(page,label,callUrl);
+
+  const normalizeFa=v=>String(v??'')
+    .replace(/ي/g,'ی').replace(/ك/g,'ک')
+    .replace(/\\s+/g,' ').trim();
+
+  const allowedUserBusinessUnits=new Set([
+    'شعبه مشتریان ویژه',
+    'واحد شبکه فروش',
+    'شعبه مشاوره سرمایه گذاری'
+  ].map(normalizeFa));
+
+  const rows=rawRows.filter(r=>{
+    const userBu=normalizeFa(
+      r.ms_partyuserid?.['_businessunitid_value@OData.Community.Display.V1.FormattedValue']
+    );
+    return allowedUserBusinessUnits.has(userBu);
+  });
+
   return rows.map(r=>{
     const subject=r.subject??'',m=String(subject).match(/(?:LEAD|OPP)-\d+/i);
     return {
       call_id:r.activityid??null,
       subject,
-      user:formatted(r,'_ms_partyuserid_value'),
+      user:r.ms_partyuserid?.fullname??formatted(r,'_ms_partyuserid_value'),
       queue:formatted(r,'_ms_callqueueid_value'),
       planned_start:r.scheduledstart??null,
-      start_date:r.actualstart??null,
+      start_date:r.scheduledstart??null,
       customer:formatted(r,'_ms_partycontactid_value'),
       destination_number:r.ms_tophonenumber??null,
       phone_number:r.phonenumber??null,
       parameters:r.ms_parameters??null,
       duration:cleanNumber(r.actualdurationminutes)??cleanNumber(r.ms_callduration),
+      business_unit:r.ms_partyuserid?.['_businessunitid_value@OData.Community.Display.V1.FormattedValue']??null,
       lead_number:m?m[0].toUpperCase():null
     };
   });
@@ -335,14 +357,16 @@ async function upload(datasets,range){
   const page=context.pages()[0]||await context.newPage();
   try{
     await authenticate(page);
-    const [leads,weeklyLeads,monthlyLeads,opportunities,weeklyOpportunities,monthlyOpportunities,calls,tickets]=await Promise.all([
+    const [leads,weeklyLeads,monthlyLeads,opportunities,weeklyOpportunities,monthlyOpportunities,calls,weeklyCalls,monthlyCalls,tickets]=await Promise.all([
       fetchLeadActivity(page,ranges.daily,'Daily leads'),
       fetchLeadActivity(page,ranges.weekly,'Weekly leads'),
       fetchLeadActivity(page,ranges.monthly,'Monthly leads'),
       fetchOpportunityActivity(page,ranges.daily,'Daily opportunities'),
       fetchOpportunityActivity(page,ranges.weekly,'Weekly opportunities'),
       fetchOpportunityActivity(page,ranges.monthly,'Monthly opportunities'),
-      fetchDailyCalls(page,range),
+      fetchCallActivity(page,ranges.daily,'Daily calls'),
+      fetchCallActivity(page,ranges.weekly,'Weekly calls'),
+      fetchCallActivity(page,ranges.monthly,'Monthly calls'),
       fetchDailyTickets(page,range)
     ]);
     console.log('Raw CRM rows:',{
@@ -353,6 +377,8 @@ async function upload(datasets,range){
       weekly_opportunities:weeklyOpportunities.length,
       monthly_opportunities:monthlyOpportunities.length,
       calls:calls.length,
+      weekly_calls:weeklyCalls.length,
+      monthly_calls:monthlyCalls.length,
       tickets:tickets.length
     });
     const result=await upload({
@@ -363,6 +389,8 @@ async function upload(datasets,range){
       weekly_opportunities:weeklyOpportunities,
       monthly_opportunities:monthlyOpportunities,
       calls,
+      weekly_calls:weeklyCalls,
+      monthly_calls:monthlyCalls,
       tickets
     },range);
     const status={status:'success',startedAt,finishedAt:new Date().toISOString(),ranges,raw:{
@@ -373,6 +401,8 @@ async function upload(datasets,range){
       weekly_opportunities:weeklyOpportunities.length,
       monthly_opportunities:monthlyOpportunities.length,
       calls:calls.length,
+      weekly_calls:weeklyCalls.length,
+      monthly_calls:monthlyCalls.length,
       tickets:tickets.length
     },stored:result.counts};
     fs.writeFileSync(path.join(runtimeDir,'last-activity-sync.json'),JSON.stringify(status,null,2),'utf8');
