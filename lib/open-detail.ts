@@ -20,19 +20,19 @@ export async function getOpenLeadDetails(field:string,value:string){
  if(field==='nextCallReason'&&value==='بدون تسک')actual='';
  if(value==='بدون مقدار')actual='';
  return tursoSelect((`SELECT
-   lead_number AS leadNumber,
-   created_date AS createdDate,
-   age_days AS ageDays,
-   customer_rank AS customerRank,
-   last_status AS lastStatus,
-   next_call_reason AS nextCallReason,
-   customer_name AS customerName,
+   lead_number AS "leadNumber",
+   created_date AS "createdDate",
+   age_days AS "ageDays",
+   customer_rank AS "customerRank",
+   last_status AS "lastStatus",
+   next_call_reason AS "nextCallReason",
+   customer_name AS "customerName",
    owner,
-   lead_type AS leadType,
+   lead_type AS "leadType",
    source,
    campaign,
-   source_software AS sourceSoftware,
-   business_unit AS businessUnit
+   source_software AS "sourceSoftware",
+   business_unit AS "businessUnit"
   FROM open_leads
   WHERE COALESCE(${column},'')=?
   ORDER BY age_days DESC
