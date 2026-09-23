@@ -105,6 +105,28 @@ async function fetchPaged(page,label,url){
   return all;
 }
 
+let callUserDirectoryPromise=null;
+async function getCallUserDirectory(page){
+  if(!callUserDirectoryPromise){
+    callUserDirectoryPromise=(async()=>{
+      const users=await fetchPaged(
+        page,
+        'Call users',
+        '/api/data/v9.0/systemusers?$select=systemuserid,fullname,_businessunitid_value'
+      );
+      const map=new Map();
+      for(const u of users){
+        map.set(String(u.systemuserid||'').toLowerCase(),{
+          fullname:u.fullname??null,
+          businessUnit:formatted(u,'_businessunitid_value')
+        });
+      }
+      return map;
+    })();
+  }
+  return callUserDirectoryPromise;
+}
+
 async function fetchLeadActivity(page,range,label='Leads'){
   const select=[
     'leadid','ms_leadnumber','createdon','modifiedon','statecode','statuscode',
@@ -249,9 +271,9 @@ async function fetchCallActivity(page,range,label='Calls'){
   ].join(',');
   const filter=`scheduledstart ge ${range.start} and scheduledstart lt ${range.end}`;
   const callUrl='/api/data/v9.0/phonecalls?$select='+select+
-    '&$filter='+encodeURIComponent(filter)+
-    '&$expand=ms_partyuserid($select=fullname,_businessunitid_value)';
+    '&$filter='+encodeURIComponent(filter);
   const rawRows=await fetchPaged(page,label,callUrl);
+  const userDirectory=await getCallUserDirectory(page);
 
   const normalizeFa=v=>String(v??'')
     .replace(/ي/g,'ی').replace(/ك/g,'ک')
@@ -264,18 +286,19 @@ async function fetchCallActivity(page,range,label='Calls'){
   ].map(normalizeFa));
 
   const rows=rawRows.filter(r=>{
-    const userBu=normalizeFa(
-      r.ms_partyuserid?.['_businessunitid_value@OData.Community.Display.V1.FormattedValue']
-    );
-    return allowedUserBusinessUnits.has(userBu);
+    const userId=String(r._ms_partyuserid_value||'').toLowerCase();
+    const userInfo=userDirectory.get(userId);
+    return allowedUserBusinessUnits.has(normalizeFa(userInfo?.businessUnit));
   });
 
   return rows.map(r=>{
     const subject=r.subject??'',m=String(subject).match(/(?:LEAD|OPP)-\d+/i);
+    const userId=String(r._ms_partyuserid_value||'').toLowerCase();
+    const userInfo=userDirectory.get(userId);
     return {
       call_id:r.activityid??null,
       subject,
-      user:r.ms_partyuserid?.fullname??formatted(r,'_ms_partyuserid_value'),
+      user:userInfo?.fullname??formatted(r,'_ms_partyuserid_value'),
       queue:formatted(r,'_ms_callqueueid_value'),
       planned_start:r.scheduledstart??null,
       start_date:r.scheduledstart??null,
@@ -284,7 +307,7 @@ async function fetchCallActivity(page,range,label='Calls'){
       phone_number:r.phonenumber??null,
       parameters:r.ms_parameters??null,
       duration:cleanNumber(r.actualdurationminutes)??cleanNumber(r.ms_callduration),
-      business_unit:r.ms_partyuserid?.['_businessunitid_value@OData.Community.Display.V1.FormattedValue']??null,
+      business_unit:userInfo?.businessUnit??null,
       lead_number:m?m[0].toUpperCase():null
     };
   });
