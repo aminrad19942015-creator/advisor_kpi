@@ -7,12 +7,16 @@ export { assertCrmConnectorToken };
 const STAGING='crm_daily_activity_chunks';
 const TARGETS:Record<string,string>={
   leads:'daily_leads',
+  weekly_leads:'weekly_leads',
+  monthly_leads:'monthly_leads',
   opportunities:'daily_opportunities',
   calls:'daily_calls',
   tickets:'daily_tickets'
 };
 const PERSON_FIELD:Record<string,string>={
   leads:'owner',
+  weekly_leads:'owner',
+  monthly_leads:'owner',
   opportunities:'creator',
   calls:'user',
   tickets:'owner'
@@ -111,7 +115,7 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   if(!batchId) throw new Error('Missing CRM activity batch id.');
   await ensureCrmActivityTables();
   const chunks=await tursoSelect(`SELECT dataset,seq,payload_json FROM ${ident(STAGING)} WHERE batch_id=? ORDER BY dataset,seq`,[batchId]);
-  const grouped:Record<string,any[]>={leads:[],opportunities:[],calls:[],tickets:[]};
+  const grouped:Record<string,any[]>={leads:[],weekly_leads:[],monthly_leads:[],opportunities:[],calls:[],tickets:[]};
   for(const chunk of chunks){
     const dataset=String(chunk.dataset||'');
     if(!TARGETS[dataset]) continue;
@@ -133,7 +137,7 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   }
 
   const counts:any={};
-  for(const key of ['leads','opportunities','calls','tickets']) counts[key]=await replaceTarget(TARGETS[key],filtered[key]);
+  for(const key of ['leads','weekly_leads','monthly_leads','opportunities','calls','tickets']) counts[key]=await replaceTarget(TARGETS[key],filtered[key]);
 
   const now=new Date().toISOString();
   const meta=[
