@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { tursoBatch, tursoSelect } from './turso';
+import { tursoBatch, tursoSelect, tableColumns } from './turso';
 
 const SHADOW_TABLE='open_leads_crm_shadow';
 const NEXT_TABLE='open_leads_crm_shadow_next';
@@ -198,7 +198,7 @@ export async function operationalOpenLeadsSource(){
   const recordedRows=Number(values.crm_shadow_row_count||0);
   const ts=Date.parse(lastSyncAt);
   const ageMinutes=Number.isFinite(ts)?(Date.now()-ts)/60000:Number.POSITIVE_INFINITY;
-  const useCrm=recordedRows>0 && ageMinutes>=0 && ageMinutes<=90;
+  const useCrm=recordedRows>0 && ageMinutes>=0 && ageMinutes<=1080;
   return {
     table: useCrm ? SHADOW_TABLE : 'open_leads',
     source: useCrm ? 'crm' : 'excel',
