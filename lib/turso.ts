@@ -24,7 +24,7 @@ function pgClient(){
  if(!pg){
   const url=process.env.SUPABASE_DATABASE_URL;
   if(!url) throw new Error('SUPABASE_DATABASE_URL is not configured.');
-  pg=postgres(url,{max:6,idle_timeout:20,connect_timeout:20,prepare:false});
+  pg=postgres(url,{max:1,idle_timeout:10,connect_timeout:10,prepare:false});
  }
  return pg;
 }
@@ -58,17 +58,8 @@ async function postgresBatch(statements:TursoStatement[]):Promise<any[][]>{
    return out;
   });
  }
- const concurrency=3;
- const out:any[][]=new Array(statements.length);
- let next=0;
- async function worker(){
-  while(true){
-   const i=next++;
-   if(i>=statements.length)return;
-   out[i]=await pgExec(sql,statements[i]);
-  }
- }
- await Promise.all(Array.from({length:Math.min(concurrency,statements.length)},()=>worker()));
+ const out:any[][]=[];
+ for(const s of statements) out.push(await pgExec(sql,s));
  return out;
 }
 
