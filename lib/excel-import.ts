@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { tursoBatch, tursoSelect } from './turso';
+import { tursoBatch, tursoSelect, tableColumns } from './turso';
 
 type Spec={key:string;target:string;kind:'team'|'lead'|'opp'|'call'|'ticket';sheetIncludes:string;required:string[]};
 const SPECS:Spec[]=[
