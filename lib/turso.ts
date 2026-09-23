@@ -58,7 +58,18 @@ async function postgresBatch(statements:TursoStatement[]):Promise<any[][]>{
    return out;
   });
  }
- return Promise.all(statements.map(s=>pgExec(sql,s)));
+ const concurrency=3;
+ const out:any[][]=new Array(statements.length);
+ let next=0;
+ async function worker(){
+  while(true){
+   const i=next++;
+   if(i>=statements.length)return;
+   out[i]=await pgExec(sql,statements[i]);
+  }
+ }
+ await Promise.all(Array.from({length:Math.min(concurrency,statements.length)},()=>worker()));
+ return out;
 }
 
 export function databaseProvider(){return usePostgres()?'Supabase':'Turso';}
