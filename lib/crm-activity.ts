@@ -131,7 +131,9 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
     if(!Array.isArray(parsed)) throw new Error('Invalid CRM activity payload.');
     grouped[dataset].push(...parsed);
   }
-  for(const key of Object.keys(TARGETS)){
+  const requested=Object.keys(expected||{}).filter(key=>TARGETS[key]);
+  if(!requested.length) throw new Error('CRM activity finalize has no datasets.');
+  for(const key of requested){
     const want=Number(expected?.[key]||0);
     if(grouped[key].length!==want) throw new Error(`CRM activity row-count mismatch for ${key}: expected ${want}, received ${grouped[key].length}.`);
   }
@@ -139,7 +141,7 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   const teamRows=await tursoSelect('SELECT name FROM team_members');
   const team=new Set(teamRows.map((r:any)=>String(r.name||'').trim()).filter(Boolean));
   const filtered:Record<string,any[]>={};
-  for(const key of Object.keys(TARGETS)){
+  for(const key of requested){
     if(key==='opportunities'||key==='weekly_opportunities'||key==='monthly_opportunities'||key==='calls'||key==='weekly_calls'||key==='monthly_calls'){
       filtered[key]=grouped[key];
       continue;
@@ -149,7 +151,7 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   }
 
   const counts:any={};
-  for(const key of ['leads','weekly_leads','monthly_leads','opportunities','weekly_opportunities','monthly_opportunities','calls','weekly_calls','monthly_calls','tickets']) counts[key]=await replaceTarget(TARGETS[key],filtered[key]);
+  for(const key of requested) counts[key]=await replaceTarget(TARGETS[key],filtered[key]);
 
   const now=new Date().toISOString();
   const meta=[
