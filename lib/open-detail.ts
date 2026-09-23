@@ -34,7 +34,7 @@ export async function getOpenLeadDetails(field:string,value:string){
    o.source_software AS "sourceSoftware",
    o.business_unit AS "businessUnit"
   FROM open_leads o
-  LEFT JOIN team_members t ON t.name=o.owner
+  INNER JOIN team_members t ON t.name=o.owner
   WHERE COALESCE(o.${column},'')=?
   ORDER BY o.age_days DESC
   LIMIT 3000`).replaceAll('open_leads',openTable),[actual]);
