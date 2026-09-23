@@ -62,7 +62,7 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
   {key:'days',sql:`SELECT "day" FROM (SELECT (last_modified_date::timestamptz)::date AS "day" FROM ${L}${lw.where} AND last_modified_date<>'' UNION SELECT (created_date::timestamptz)::date AS "day" FROM ${O}${ow.where} AND created_date<>'' UNION SELECT (start_date::timestamptz)::date AS "day" FROM ${C}${cw.where} AND start_date<>'' UNION SELECT (closed_at::timestamptz)::date AS "day" FROM ${T}${tw.where} AND closed_at<>'') WHERE "day" IS NOT NULL ORDER BY "day"`,args:[...lw.args,...ow.args,...cw.args,...tw.args]},
   {key:'leadByAdvisor',sql:`SELECT owner name,COUNT(*) leads,SUM(CASE WHEN COALESCE(last_status,'') NOT IN ${TALKED_EXCLUDED_SQL} THEN 1 ELSE 0 END) talked FROM ${L}${lw.where} AND COALESCE(owner,'')<>'' GROUP BY owner`,args:lw.args},
   {key:'oppByAdvisor',sql:`SELECT creator name,SUM(CASE WHEN registration_type='OPP' THEN 1 ELSE 0 END) opps FROM ${O}${ow.where} AND COALESCE(creator,'')<>'' GROUP BY creator`,args:ow.args},
-  {key:'callByAdvisor',sql:`SELECT "user" name,COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C}${cw.where} AND COALESCE("user",'')<>'' GROUP BY user`,args:cw.args},
+  {key:'callByAdvisor',sql:`SELECT "user" name,COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C}${cw.where} AND COALESCE("user",'')<>'' GROUP BY "user"`,args:cw.args},
   {key:'ticketByAdvisor',sql:`SELECT owner name,COUNT(*) tickets FROM ${T}${tw.where} AND COALESCE(owner,'')<>'' GROUP BY owner`,args:tw.args},
   {key:'attendanceByAdvisor',sql:`SELECT name,COUNT(*) AS "attendanceDays" FROM (
     SELECT "user" name,(start_date::timestamptz)::date AS "day"
