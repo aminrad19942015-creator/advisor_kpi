@@ -43,11 +43,11 @@ function pgSql(input:string){
  }
  return out;
 }
-async function pgExec(client:any,statement:TursoStatement){
- const result=await client.unsafe(pgSql(statement.sql),(statement.args||[]) as any[]);
- return Array.from(result as any);
+async function pgExec(client:any,statement:TursoStatement):Promise<any[]>{
+ const result:any=await client.unsafe(pgSql(statement.sql),(statement.args||[]) as any[]);
+ return Array.from(result as any) as any[];
 }
-async function postgresBatch(statements:TursoStatement[]){
+async function postgresBatch(statements:TursoStatement[]):Promise<any[][]>{
  const sql=pgClient();
  const explicit=statements.length>=2 && /^\s*BEGIN(?:\s+IMMEDIATE)?\s*$/i.test(statements[0].sql) && /^\s*COMMIT\s*$/i.test(statements[statements.length-1].sql);
  if(explicit){
@@ -74,7 +74,7 @@ export async function tableColumns(table:string):Promise<string[]>{
  return (r||[]).map((x:any)=>String(x.name));
 }
 
-export async function tursoBatch(statements:TursoStatement[]){
+export async function tursoBatch(statements:TursoStatement[]):Promise<any[][]>{
  if(usePostgres())return postgresBatch(statements);
  const c=tursoConfig();
  const requests:any[]=statements.map(s=>({type:'execute',stmt:{sql:s.sql,args:(s.args||[]).map(arg)}}));requests.push({type:'close'});
@@ -83,4 +83,4 @@ export async function tursoBatch(statements:TursoStatement[]){
  const parsed=JSON.parse(text);const bad=(parsed.results||[]).find((r:any)=>r.type==='error');if(bad)throw new Error('Turso query error: '+JSON.stringify(bad));
  return statements.map((_,i)=>rows(parsed.results[i]));
 }
-export async function tursoSelect(sql:string,args:unknown[]=[]){return (await tursoBatch([{sql,args}]))[0];}
+export async function tursoSelect(sql:string,args:unknown[]=[]):Promise<any[]>{return (await tursoBatch([{sql,args}]))[0]||[];}
