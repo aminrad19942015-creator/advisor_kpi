@@ -51,6 +51,7 @@ export function validateCrmAdminConfig(config:any):CrmAdminConfig{
     out[key].dateField=String(out[key].dateField||'').trim();
     out[key].businessUnits=list(out[key].businessUnits,'واحدهای '+key);
     out[key].enabled=out[key].enabled!==false;
+    out[key].sourceMode=String(out[key].sourceMode||'crm').toLowerCase()==='excel'?'excel':'crm';
   }
   out.lead.statuses=list(out.lead.statuses,'وضعیت‌های Lead');
   out.lead.ownerFromTeamMembers=out.lead.ownerFromTeamMembers!==false;
@@ -66,8 +67,10 @@ export function validateCrmAdminConfig(config:any):CrmAdminConfig{
   out.ticket.customerRanks=list(out.ticket.customerRanks,'رتبه‌های Ticket');
   out.ticket.topicMatch=String(out.ticket.topicMatch||'contact_or_main');
   out.ticket.enabled=out.ticket.enabled!==false;
-  out.openLeads=out.openLeads||{entity:'leads',enabled:true};
+  out.ticket.sourceMode=String(out.ticket.sourceMode||'crm').toLowerCase()==='excel'?'excel':'crm';
+  out.openLeads=out.openLeads||{entity:'leads',enabled:true,sourceMode:'crm'};
   out.openLeads.entity=String(out.openLeads.entity||'leads').trim();
   out.openLeads.enabled=out.openLeads.enabled!==false;
+  out.openLeads.sourceMode=String(out.openLeads.sourceMode||'crm').toLowerCase()==='excel'?'excel':'crm';
   return out as CrmAdminConfig;
 }
