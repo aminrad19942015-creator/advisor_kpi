@@ -88,10 +88,6 @@ const FIELD_MAP:Record<string,string>={
   trafficSource:'traffic_source'
 };
 
-async function tableColumns(table:string):Promise<string[]>{
-  const rows=await tursoSelect(`PRAGMA table_info(${ident(table)})`);
-  return rows.map((r:any)=>String(r.name));
-}
 function mapRow(row:any,dest:Set<string>){
   const out:any={};
   for(const [source,target] of Object.entries(FIELD_MAP)){
