@@ -72,10 +72,10 @@ async function authenticate(page){
 
   await page.waitForLoadState('domcontentloaded').catch(()=>{});
   await page.waitForTimeout(2500);
-  const probe=await page.evaluate(async()=>{
-    const r=await fetch(CRM_API_PREFIX+'/WhoAmI',{credentials:'include',headers:{Accept:'application/json'}});
+  const probe=await page.evaluate(async apiPrefix=>{
+    const r=await fetch(apiPrefix+'/WhoAmI',{credentials:'include',headers:{Accept:'application/json'}});
     return {status:r.status,text:await r.text()};
-  });
+  },CRM_API_PREFIX);
   if(probe.status!==200) throw new Error('WhoAmI failed with HTTP '+probe.status);
   console.log('CRM authentication validated.');
 }
