@@ -1,9 +1,10 @@
 const fs=require('fs');
 const path=require('path');
 const {chromium}=require('playwright');
+const {loadCrmConfig}=require('./config-client');
 require('dotenv').config({path:path.join(__dirname,'.env.local')});
 
-const CRM_ORIGIN='https://mxrm.emofid.com';
+let CRM_ORIGIN='https://mxrm.emofid.com';
 const shadowUrl=process.env.DASHBOARD_API_URL||'https://advisor-kpi.vercel.app/api/crm-shadow';
 const API_URL=process.env.DASHBOARD_ACTIVITY_API_URL||shadowUrl.replace(/\/crm-shadow\/?$/,'/crm-activity');
 const username=(process.env.CRM_USERNAME||'').trim();
@@ -65,18 +66,8 @@ async function fetchPaged(page,label,url){
   return all;
 }
 
-const allowedQueues=new Set(['راهنما','Entekhab','AHD','راهنمای ارشد'].map(normalizeFa));
-const allowedTopics=new Set([
-'پیگیری امور سبدگردانی','پیگیری صدور و ابطال صندوق','پیگیری مالی صندوق','پیگیری سبد و صندوق های مفید-شعب',
-'پیگیری اکانت صندوق','لغو درخواست صدور و ابطال صندوق-شعب','پیگیری سبد و صندوق های مفید',
-'درخواست فعال سازی صدور و ابطال اینترنتی صندوق ها-شعب','تمکن مالی صندوق','پیگیری دارایی','پیگیری دارایی-شعب',
-'پیگیری سایر صندوق ها','درخواست مشاوره صندوق همسنگ','مشاوره مشتریان ناراضی','پیگیری اختلال سامانه','پیگیری گردش حساب',
-'پیگیری سایر صندوق ها-شعب','پیگیری تماس خروجی','پیگیری طرح حامی','پیگیری طرح حامی-شعب','ارتباط با سایر بخش ها'
-].map(normalizeFa));
-const excludedStatuses=new Set(['تیکت تکراری','بررسی نشده'].map(normalizeFa));
-const allowedRanks=new Set(['Ordinary','Silver','Diamond','Gold','Bronze'].map(normalizeFa));
 
-async function fetchIncidentMap(page,ids,label){
+async function fetchIncidentMap(page,ids,label,caseEntity='incidents'){
   const map=new Map();
   const unique=[...new Set(ids.filter(Boolean).map(x=>String(x).toLowerCase()))];
   for(let i=0;i<unique.length;i+=35){
@@ -88,22 +79,29 @@ async function fetchIncidentMap(page,ids,label){
       'ms_nationalnumber','modifiedon','_modifiedby_value','createdon','_createdby_value'
     ].join(',');
     const rows=await fetchPaged(page,label+' cases '+(Math.floor(i/35)+1),
-      '/api/data/v9.0/incidents?$select='+select+'&$filter='+encodeURIComponent(filter));
+      '/api/data/v9.0/'+caseEntity+'?$select='+select+'&$filter='+encodeURIComponent(filter));
     for(const row of rows) map.set(String(row.incidentid||'').toLowerCase(),row);
   }
   return map;
 }
 
-async function fetchTickets(page,range,label){
+async function fetchTickets(page,range,label,ticketConfig){
   const qSelect=['queueitemid','title','_queueid_value','_objectid_value','_workerid_value','enteredon','modifiedon'].join(',');
-  const qFilter=`modifiedon ge ${range.start} and modifiedon lt ${range.end}`;
+  const dateField=String(ticketConfig?.dateField||'modifiedon');
+  const queueEntity=String(ticketConfig?.queueEntity||'queueitems');
+  const caseEntity=String(ticketConfig?.caseEntity||'incidents');
+  const allowedQueues=new Set((ticketConfig?.queues||[]).map(normalizeFa));
+  const allowedTopics=new Set((ticketConfig?.topics||[]).map(normalizeFa));
+  const excludedStatuses=new Set((ticketConfig?.excludedStatuses||[]).map(normalizeFa));
+  const allowedRanks=new Set((ticketConfig?.customerRanks||[]).map(normalizeFa));
+  const qFilter=`${dateField} ge ${range.start} and ${dateField} lt ${range.end}`;
   const queueRows=await fetchPaged(page,label+' queue items',
-    '/api/data/v9.0/queueitems?$select='+qSelect+'&$filter='+encodeURIComponent(qFilter));
+    '/api/data/v9.0/'+queueEntity+'?$select='+qSelect+'&$filter='+encodeURIComponent(qFilter));
 
   const queueFiltered=queueRows.filter(r=>allowedQueues.has(normalizeFa(formatted(r,'_queueid_value'))));
   console.log(label+' allowed queue rows:',queueFiltered.length);
 
-  const incidentMap=await fetchIncidentMap(page,queueFiltered.map(r=>r._objectid_value),label);
+  const incidentMap=await fetchIncidentMap(page,queueFiltered.map(r=>r._objectid_value),label,caseEntity);
   const out=[];
 
   for(const q of queueFiltered){
@@ -135,7 +133,7 @@ async function fetchTickets(page,range,label){
       case_number:incident.ticketnumber??null,
       national_id:incident.ms_nationalnumber??null,
       type:'Case',
-      closed_at:null,
+      closed_at:q.modifiedon??null,
       modified_on:q.modifiedon??null,
       modified_by:formatted(incident,'_modifiedby_value'),
       created_on:incident.createdon??null,
@@ -177,10 +175,17 @@ async function upload(datasets,range){
   const context=await chromium.launchPersistentContext(profileDir,{channel:'msedge',headless:true});
   const page=context.pages()[0]||await context.newPage();
   try{
+    const crmConfig=await loadCrmConfig(connectorToken);
+    CRM_ORIGIN=String(crmConfig.crmOrigin||CRM_ORIGIN).replace(/\/$/,'');
+    const ticketConfig=crmConfig.ticket||{};
+    if(ticketConfig.enabled===false||String(ticketConfig.sourceMode||'crm').toLowerCase()!=='crm'){
+      console.log('Ticket CRM sync skipped by admin configuration.');
+      return;
+    }
     await authenticate(page);
-    const tickets=await fetchTickets(page,ranges.daily,'Daily tickets');
-    const weeklyTickets=await fetchTickets(page,ranges.weekly,'Weekly tickets');
-    const monthlyTickets=await fetchTickets(page,ranges.monthly,'Monthly tickets');
+    const tickets=await fetchTickets(page,ranges.daily,'Daily tickets',ticketConfig);
+    const weeklyTickets=await fetchTickets(page,ranges.weekly,'Weekly tickets',ticketConfig);
+    const monthlyTickets=await fetchTickets(page,ranges.monthly,'Monthly tickets',ticketConfig);
     const result=await upload({tickets,weekly_tickets:weeklyTickets,monthly_tickets:monthlyTickets},ranges.daily);
     fs.writeFileSync(path.join(runtimeDir,'last-tickets-sync.json'),JSON.stringify({status:'success',startedAt,finishedAt:new Date().toISOString(),stored:result.counts},null,2),'utf8');
     console.log('');
