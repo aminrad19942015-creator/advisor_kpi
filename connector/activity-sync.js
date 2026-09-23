@@ -1,0 +1,283 @@
+const fs = require('fs');
+const path = require('path');
+const { chromium } = require('playwright');
+require('dotenv').config({ path: path.join(__dirname, '.env.local') });
+
+const CRM_ORIGIN = 'https://mxrm.emofid.com';
+const shadowUrl = process.env.DASHBOARD_API_URL || 'https://advisor-kpi.vercel.app/api/crm-shadow';
+const API_URL = process.env.DASHBOARD_ACTIVITY_API_URL || shadowUrl.replace(/\/crm-shadow\/?$/,'/crm-activity');
+const username = (process.env.CRM_USERNAME || '').trim();
+const password = process.env.CRM_PASSWORD || '';
+const connectorToken = process.env.CRM_CONNECTOR_TOKEN;
+
+if (!username || !password || !connectorToken) {
+  console.error('Missing CRM_USERNAME, CRM_PASSWORD, or CRM_CONNECTOR_TOKEN in connector/.env.local');
+  process.exit(1);
+}
+
+const runtimeDir = path.join(__dirname, 'runtime');
+const profileDir = path.join(runtimeDir, 'browser-profile');
+fs.mkdirSync(runtimeDir, { recursive: true });
+
+function formatted(row, field) {
+  return row[field + '@OData.Community.Display.V1.FormattedValue'] ?? row[field] ?? null;
+}
+function cleanNumber(v){
+  if(v===null||v===undefined||v==='') return null;
+  const n=Number(v);
+  return Number.isFinite(n)?n:null;
+}
+function iranYesterdayRange(){
+  const offsetMs=3.5*3600*1000;
+  const nowIran=new Date(Date.now()+offsetMs);
+  const y=nowIran.getUTCFullYear(),m=nowIran.getUTCMonth(),d=nowIran.getUTCDate();
+  const todayIranMidnightUtc=Date.UTC(y,m,d)-offsetMs;
+  const start=new Date(todayIranMidnightUtc-24*3600*1000);
+  const end=new Date(todayIranMidnightUtc);
+  return {start:start.toISOString(),end:end.toISOString()};
+}
+
+async function authenticate(page) {
+  console.log('Checking CRM session...');
+  await page.goto(CRM_ORIGIN + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  if (page.url().includes('adfs.emofid.com')) {
+    console.log('CRM session expired. ADFS login required.');
+    const userInput=page.locator('#userNameInput');
+    await userInput.waitFor({state:'visible',timeout:30000});
+    await userInput.fill(username);
+    const submit=page.locator('#submitButton');
+    if(await submit.isVisible().catch(()=>false)) await submit.click(); else await userInput.press('Enter');
+    const passwordInput=page.locator('#passwordInput');
+    await passwordInput.waitFor({state:'visible',timeout:30000});
+    await passwordInput.fill(password);
+    await Promise.all([
+      page.waitForURL(url=>url.hostname==='mxrm.emofid.com',{timeout:120000}),
+      (async()=>{ if(await submit.isVisible().catch(()=>false)) await submit.click(); else await passwordInput.press('Enter'); })()
+    ]);
+    console.log('ADFS login completed.');
+  } else console.log('Existing CRM session found.');
+
+  await page.waitForLoadState('domcontentloaded').catch(()=>{});
+  await page.waitForTimeout(3000);
+  const probe=await page.evaluate(async()=>{
+    const r=await fetch('/api/data/v9.0/WhoAmI',{credentials:'include',headers:{Accept:'application/json'}});
+    return {status:r.status,text:await r.text()};
+  });
+  if(probe.status!==200) throw new Error('WhoAmI failed with HTTP '+probe.status);
+  console.log('CRM authentication validated.');
+}
+
+async function fetchPaged(page,label,url){
+  const all=[]; let n=0;
+  while(url){
+    const result=await page.evaluate(async requestUrl=>{
+      const r=await fetch(requestUrl,{
+        credentials:'include',
+        headers:{
+          Accept:'application/json',
+          Prefer:'odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
+        }
+      });
+      return {status:r.status,text:await r.text()};
+    },url);
+    if(result.status!==200) throw new Error(label+' CRM read failed HTTP '+result.status+': '+result.text.slice(0,700));
+    const data=JSON.parse(result.text),rows=data.value||[];
+    all.push(...rows); n++;
+    console.log(label+' page '+n+': '+rows.length+' - total '+all.length);
+    if(data['@odata.nextLink']){
+      const u=new URL(data['@odata.nextLink']);
+      url=u.pathname+u.search;
+    } else url=null;
+  }
+  return all;
+}
+
+async function fetchDailyLeads(page,range){
+  const select=[
+    'leadid','ms_leadnumber','createdon','modifiedon','statecode','statuscode',
+    'ms_nextcallreasontypecode','ms_followupby','fullname','firstname','middlename','lastname',
+    '_createdby_value','_modifiedby_value','_ownerid_value','_owninguser_value',
+    'ms_leadtypeleadtype','leadsourcecode','_campaignid_value','_ms_applicationid_value',
+    'ms_nationalnumber','mobilephone','_ms_consultantuserid_value','_ms_marketeruserid_value',
+    'ms_trafficsource'
+  ].join(',');
+  const filter=`statecode ne 0 and modifiedon ge ${range.start} and modifiedon lt ${range.end}`;
+  const url='/api/data/v9.0/leads?$select='+select+'&$filter='+encodeURIComponent(filter)+
+    '&$expand=owningbusinessunit($select=name),customerid_contact($select=fullname,customertypecode,_ms_advisorid_value,_ms_marketeruserid_value)';
+  const rows=await fetchPaged(page,'Leads',url);
+  return rows.map(r=>({
+    lead_number:r.ms_leadnumber??null,
+    created_date:r.createdon??null,
+    customer_rank:r.customerid_contact?.['customertypecode@OData.Community.Display.V1.FormattedValue']??null,
+    last_modified_date:r.modifiedon??null,
+    last_status:formatted(r,'statuscode'),
+    next_call_reason:formatted(r,'ms_nextcallreasontypecode'),
+    next_followup_at:r.ms_followupby??null,
+    customer_name:r.customerid_contact?.fullname??r.fullname??null,
+    first_name:r.firstname??null,
+    middle_name:r.middlename??null,
+    last_name:r.lastname??null,
+    last_modified_by:formatted(r,'_modifiedby_value'),
+    creator:formatted(r,'_createdby_value'),
+    owner:formatted(r,'_ownerid_value'),
+    lead_type:formatted(r,'ms_leadtypeleadtype'),
+    source:formatted(r,'leadsourcecode'),
+    campaign:formatted(r,'_campaignid_value'),
+    source_software:formatted(r,'_ms_applicationid_value'),
+    identity_id:r.ms_nationalnumber??null,
+    mobile:r.mobilephone??null,
+    advisor:r.customerid_contact?.['_ms_advisorid_value@OData.Community.Display.V1.FormattedValue']??formatted(r,'_ms_consultantuserid_value'),
+    referrer:r.customerid_contact?.['_ms_marketeruserid_value@OData.Community.Display.V1.FormattedValue']??formatted(r,'_ms_marketeruserid_value'),
+    business_unit:r._owninguser_value?(r.owningbusinessunit?.name??null):null,
+    traffic_source:r.ms_trafficsource??null
+  }));
+}
+
+async function fetchDailyOpportunities(page,range){
+  const select=[
+    'opportunityid','ms_opportunitynumber','name','createdon','statecode','statuscode',
+    '_customerid_value','ms_opportunitysourcecode','_createdby_value','_ownerid_value',
+    '_campaignid_value','_originatingleadid_value','_ms_sourcecaseid_value',
+    'ms_documenttypecode','ms_typeofinvest','ms_totalestimateinvestment','ms_totalrealinvestment',
+    '_ms_advisorid_value','_ms_marketeruserid_value','ms_nationalnumber'
+  ].join(',');
+  const filter=`createdon ge ${range.start} and createdon lt ${range.end}`;
+  const rows=await fetchPaged(page,'Opportunities','/api/data/v9.0/opportunities?$select='+select+'&$filter='+encodeURIComponent(filter));
+  return rows.map(r=>{
+    const title=r.name??'',upper=String(title).toUpperCase();
+    const leadMatch=String(title).match(/LEAD-\d+/i);
+    const registration_type=/(^|-)OPP-/i.test(upper)?'OPP':/(^|-)LEAD-/i.test(upper)?'LEAD':(leadMatch?'LEAD':'');
+    return {
+      opportunity_id:r.ms_opportunitynumber??r.opportunityid??null,
+      title,
+      created_date:r.createdon??null,
+      last_status:formatted(r,'statuscode'),
+      status:formatted(r,'statecode'),
+      potential_customer:formatted(r,'_customerid_value'),
+      source:formatted(r,'ms_opportunitysourcecode'),
+      creator:formatted(r,'_createdby_value'),
+      owner:formatted(r,'_ownerid_value'),
+      campaign_reference:formatted(r,'_campaignid_value'),
+      ticket_source:formatted(r,'_ms_sourcecaseid_value'),
+      sales_case_type:formatted(r,'ms_documenttypecode'),
+      investment_type:formatted(r,'ms_typeofinvest'),
+      expected_investment:cleanNumber(r.ms_totalestimateinvestment),
+      actual_investment:cleanNumber(r.ms_totalrealinvestment),
+      advisor:formatted(r,'_ms_advisorid_value'),
+      referrer:formatted(r,'_ms_marketeruserid_value'),
+      registration_type,
+      lead_number:leadMatch?leadMatch[0].toUpperCase():null
+    };
+  });
+}
+
+async function fetchDailyCalls(page,range){
+  const select=[
+    'activityid','subject','_ms_partyuserid_value','_ms_callqueueid_value','scheduledstart','actualstart',
+    '_ms_partycontactid_value','ms_tophonenumber','phonenumber','ms_parameters','ms_callduration','actualdurationminutes'
+  ].join(',');
+  const filter=`actualstart ge ${range.start} and actualstart lt ${range.end}`;
+  const rows=await fetchPaged(page,'Calls','/api/data/v9.0/phonecalls?$select='+select+'&$filter='+encodeURIComponent(filter));
+  return rows.map(r=>{
+    const subject=r.subject??'',m=String(subject).match(/(?:LEAD|OPP)-\d+/i);
+    return {
+      call_id:r.activityid??null,
+      subject,
+      user:formatted(r,'_ms_partyuserid_value'),
+      queue:formatted(r,'_ms_callqueueid_value'),
+      planned_start:r.scheduledstart??null,
+      start_date:r.actualstart??null,
+      customer:formatted(r,'_ms_partycontactid_value'),
+      destination_number:r.ms_tophonenumber??null,
+      phone_number:r.phonenumber??null,
+      parameters:r.ms_parameters??null,
+      duration:cleanNumber(r.actualdurationminutes)??cleanNumber(r.ms_callduration),
+      lead_number:m?m[0].toUpperCase():null
+    };
+  });
+}
+
+async function fetchDailyTickets(page,range){
+  const select=[
+    'incidentid','title','_ms_contactreasonid_value','_ms_actualcontactreasonid_value','_ownerid_value',
+    'resolveby','statuscode','ms_customertypecode','description','caseorigincode','ticketnumber',
+    'ms_nationalnumber','ms_resolvedatetime','modifiedon','_modifiedby_value','createdon','_createdby_value'
+  ].join(',');
+  const filter=`ms_resolvedatetime ge ${range.start} and ms_resolvedatetime lt ${range.end}`;
+  const rows=await fetchPaged(page,'Tickets','/api/data/v9.0/incidents?$select='+select+'&$filter='+encodeURIComponent(filter));
+  return rows.map(r=>({
+    queue_item_id:r.incidentid??null,
+    title:r.title??null,
+    contact_topic:formatted(r,'_ms_contactreasonid_value'),
+    main_subject:formatted(r,'_ms_actualcontactreasonid_value'),
+    owner:formatted(r,'_ownerid_value'),
+    resolve_by:r.resolveby??null,
+    status_reason:formatted(r,'statuscode'),
+    customer_rank:formatted(r,'ms_customertypecode'),
+    description:r.description??null,
+    origin:formatted(r,'caseorigincode'),
+    case_number:r.ticketnumber??null,
+    national_id:r.ms_nationalnumber??null,
+    type:'incident',
+    closed_at:r.ms_resolvedatetime??r.modifiedon??null,
+    modified_on:r.modifiedon??null,
+    modified_by:formatted(r,'_modifiedby_value'),
+    created_on:r.createdon??null,
+    created_by:formatted(r,'_createdby_value')
+  }));
+}
+
+async function api(body){
+  const response=await fetch(API_URL,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-crm-connector-token':connectorToken},
+    body:JSON.stringify(body)
+  });
+  const txt=await response.text();
+  if(!response.ok) throw new Error('Dashboard activity API HTTP '+response.status+': '+txt);
+  return JSON.parse(txt);
+}
+
+async function upload(datasets,range){
+  const start=await api({action:'start'});
+  const batchId=start.batchId,chunkSize=start.maxChunkRows||300;
+  const expected={};
+  for(const [dataset,rows] of Object.entries(datasets)){
+    expected[dataset]=rows.length;
+    let seq=0;
+    for(let i=0;i<rows.length;i+=chunkSize){
+      const chunk=rows.slice(i,i+chunkSize);
+      await api({action:'chunk',batchId,dataset,seq,rows:chunk});
+      console.log('Uploaded '+dataset+' chunk '+(seq+1)+': '+chunk.length);
+      seq++;
+    }
+  }
+  return api({action:'finalize',batchId,expected,sourceCheckedAt:new Date().toISOString(),range});
+}
+
+(async()=>{
+  const startedAt=new Date().toISOString(),range=iranYesterdayRange();
+  console.log('Iran yesterday UTC range:',range.start,'->',range.end);
+  const context=await chromium.launchPersistentContext(profileDir,{channel:'msedge',headless:true});
+  const page=context.pages()[0]||await context.newPage();
+  try{
+    await authenticate(page);
+    const [leads,opportunities,calls,tickets]=await Promise.all([
+      fetchDailyLeads(page,range),
+      fetchDailyOpportunities(page,range),
+      fetchDailyCalls(page,range),
+      fetchDailyTickets(page,range)
+    ]);
+    console.log('Raw CRM rows:',{leads:leads.length,opportunities:opportunities.length,calls:calls.length,tickets:tickets.length});
+    const result=await upload({leads,opportunities,calls,tickets},range);
+    const status={status:'success',startedAt,finishedAt:new Date().toISOString(),range,raw:{leads:leads.length,opportunities:opportunities.length,calls:calls.length,tickets:tickets.length},stored:result.counts};
+    fs.writeFileSync(path.join(runtimeDir,'last-activity-sync.json'),JSON.stringify(status,null,2),'utf8');
+    console.log('');
+    console.log('=== CRM DAILY ACTIVITY SYNC SUCCESS ===');
+    console.log('Stored team rows:',result.counts);
+  }catch(error){
+    fs.writeFileSync(path.join(runtimeDir,'last-activity-sync.json'),JSON.stringify({status:'failed',startedAt,finishedAt:new Date().toISOString(),range,error:String(error?.message||error)},null,2),'utf8');
+    console.error('CRM daily activity sync failed:',error.message);
+    process.exitCode=1;
+  }finally{ await context.close(); }
+})();
