@@ -105,7 +105,45 @@ async function fetchDailyLeads(page,range){
   const url='/api/data/v9.0/leads?$select='+select+'&$filter='+encodeURIComponent(filter)+
     '&$expand=owningbusinessunit($select=name),customerid_contact($select=fullname,customertypecode,_ms_advisorid_value,_ms_marketeruserid_value)';
   const rows=await fetchPaged(page,'Leads',url);
-  return rows.map(r=>({
+
+  // Business rules for "daily leads" (فعالیت دیروز / سرنخ‌ها):
+  // 1) modified yesterday (already enforced in the CRM query)
+  // 2) owner must be in team_members (enforced server-side at finalize)
+  // 3) status must be one of the approved final statuses below
+  // 4) owning business unit must be one of the three approved units
+  const normalizeFa=v=>String(v??'')
+    .replace(/ي/g,'ی').replace(/ك/g,'ک')
+    .replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+    .replace(/\\s+/g,' ').trim();
+
+  const allowedLeadStatuses=new Set([
+    'تبدیل به فرصت فروش',
+    'دریافت پشتیبانی',
+    'عدم پاسخ (2 بار )',
+    'سرمایه گذاری برای دیگران',
+    'تیکت اشتباه',
+    'مشتری بلاک لیست',
+    'منصرف شده اند',
+    'تماس تکراری',
+    'بررسی مجدد در آینده',
+    'ارجاع به شعبه',
+    'تمایلی ندارند',
+    'شماره تماس اشخاص دیگر',
+    'BM - عدم نیاز به ارتباط گیری',
+    'عدم تعیین وضعیت در زمان مقرر'
+  ].map(normalizeFa));
+
+  const allowedBusinessUnits=new Set([
+    'واحد شبکه فروش',
+    'شعبه مشاوره سرمایه گذاری',
+    'شعبه مشتریان ویژه'
+  ].map(normalizeFa));
+
+  return rows.filter(r=>{
+    const status=normalizeFa(formatted(r,'statuscode'));
+    const businessUnit=normalizeFa(r.owningbusinessunit?.name);
+    return allowedLeadStatuses.has(status) && allowedBusinessUnits.has(businessUnit);
+  }).map(r=>({
     lead_number:r.ms_leadnumber??null,
     created_date:r.createdon??null,
     customer_rank:r.customerid_contact?.['customertypecode@OData.Community.Display.V1.FormattedValue']??null,
