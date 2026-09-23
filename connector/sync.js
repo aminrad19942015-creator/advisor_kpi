@@ -5,6 +5,7 @@ const { loadCrmConfig } = require('./config-client');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
 let CRM_ORIGIN = 'https://mxrm.emofid.com';
+let CRM_API_PREFIX = '/api/data/v9.0';
 const API_URL = process.env.DASHBOARD_API_URL || 'https://advisor-kpi.vercel.app/api/crm-shadow';
 const username = (process.env.CRM_USERNAME || '').trim();
 const password = process.env.CRM_PASSWORD || '';
@@ -71,7 +72,7 @@ async function authenticate(page) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       probe = await page.evaluate(async () => {
-        const r = await fetch('/api/data/v9.0/WhoAmI', {
+        const r = await fetch(CRM_API_PREFIX+'/WhoAmI', {
           credentials: 'include',
           headers: { Accept: 'application/json' }
         });
@@ -99,7 +100,7 @@ async function fetchOpenLeads(page,entity='leads') {
     '_modifiedby_value','_campaignid_value','_ms_applicationid_value','_customerid_value'
   ].join(',');
 
-  let url = '/api/data/v9.0/' + entity + '?' +
+  let url = CRM_API_PREFIX + '/' + entity + '?' +
     '$select=' + select +
     '&$filter=statecode eq 0' +
     '&$expand=owningbusinessunit($select=name),customerid_contact($select=fullname,customertypecode,_ms_advisorid_value,_ms_marketeruserid_value)';
@@ -208,6 +209,7 @@ async function pushShadow(rows, sourceCheckedAt) {
   try {
     const crmConfig=await loadCrmConfig(connectorToken);
     CRM_ORIGIN=String(crmConfig.crmOrigin||CRM_ORIGIN).replace(/\/$/,'');
+    CRM_API_PREFIX='/api/data/'+String(crmConfig.apiVersion||'v9.0').replace(/^\/+|\/+$/g,'');
     if(crmConfig.openLeads?.enabled===false||String(crmConfig.openLeads?.sourceMode||'crm').toLowerCase()!=='crm'){
       console.log('Open Leads CRM sync skipped by admin configuration.');
       return;
