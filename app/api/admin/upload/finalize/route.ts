@@ -1,6 +1,6 @@
 import { NextRequest,NextResponse } from 'next/server';
 import { isAdmin } from '../../../../../lib/admin-auth';
-import { tursoBatch,tursoSelect } from '../../../../../lib/turso';
+import { tursoBatch,tursoSelect,databaseProvider } from '../../../../../lib/turso';
 import { inspectExcel,replaceExcel } from '../../../../../lib/excel-import';
 import { preflightImport } from '../../../../../lib/import-preflight';
 export const runtime='nodejs';
@@ -39,7 +39,9 @@ export async function POST(req:NextRequest){
    if(verifiedRows!==Number(result.rows))throw new Error(`Verify نهایی ناموفق است: ${verifiedRows} ردیف در مقصد، ${result.rows} ردیف در فایل.`);
    result={...result,verifiedRows,verified:true};
    await tursoBatch([
-    {sql:'CREATE TABLE IF NOT EXISTS admin_import_history (id INTEGER PRIMARY KEY AUTOINCREMENT,file_name TEXT NOT NULL,dataset TEXT NOT NULL,target_table TEXT NOT NULL,rows INTEGER NOT NULL,verified_rows INTEGER NOT NULL,data_version TEXT,synced_at TEXT NOT NULL,status TEXT NOT NULL)'},
+    {sql:databaseProvider()==='Supabase'
+      ?'CREATE TABLE IF NOT EXISTS admin_import_history (id BIGSERIAL PRIMARY KEY,file_name TEXT NOT NULL,dataset TEXT NOT NULL,target_table TEXT NOT NULL,rows INTEGER NOT NULL,verified_rows INTEGER NOT NULL,data_version TEXT,synced_at TEXT NOT NULL,status TEXT NOT NULL)'
+      :'CREATE TABLE IF NOT EXISTS admin_import_history (id INTEGER PRIMARY KEY AUTOINCREMENT,file_name TEXT NOT NULL,dataset TEXT NOT NULL,target_table TEXT NOT NULL,rows INTEGER NOT NULL,verified_rows INTEGER NOT NULL,data_version TEXT,synced_at TEXT NOT NULL,status TEXT NOT NULL)'},
     {sql:'INSERT INTO admin_import_history(file_name,dataset,target_table,rows,verified_rows,data_version,synced_at,status) VALUES(?,?,?,?,?,?,?,?)',args:[String(m.file_name),String(result.dataset||''),String(result.target||''),Number(result.rows||0),verifiedRows,String(result.dataVersion||''),String(result.lastSyncAt||new Date().toISOString()),'verified']},
     {sql:'DELETE FROM admin_upload_chunks WHERE upload_id=?',args:[uploadId]}
    ]);
