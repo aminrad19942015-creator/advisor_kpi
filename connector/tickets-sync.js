@@ -47,7 +47,7 @@ async function authenticate(page){
     console.log('ADFS login completed.');
   }else console.log('Existing CRM session found.');
   await page.waitForTimeout(2500);
-  const probe=await page.evaluate(async()=>{const r=await fetch(CRM_API_PREFIX+'/WhoAmI',{credentials:'include',headers:{Accept:'application/json'}});return r.status;});
+  const probe=await page.evaluate(async apiPrefix=>{const r=await fetch(apiPrefix+'/WhoAmI',{credentials:'include',headers:{Accept:'application/json'}});return r.status;},CRM_API_PREFIX);
   if(probe!==200) throw new Error('WhoAmI failed HTTP '+probe);
   console.log('CRM authentication validated.');
 }
