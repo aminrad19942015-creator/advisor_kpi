@@ -29,8 +29,8 @@ export function assertCrmConnectorToken(value:string|null){
 
 export async function ensureCrmShadowTables(){
   await tursoBatch([
-    {sql:`CREATE TABLE IF NOT EXISTS ${ident(SHADOW_TABLE)} AS SELECT * FROM open_leads WHERE 0`},
-    {sql:`CREATE TABLE IF NOT EXISTS ${ident(NEXT_TABLE)} AS SELECT * FROM open_leads WHERE 0`},
+    {sql:`CREATE TABLE IF NOT EXISTS ${ident(SHADOW_TABLE)} AS SELECT * FROM open_leads WHERE FALSE`},
+    {sql:`CREATE TABLE IF NOT EXISTS ${ident(NEXT_TABLE)} AS SELECT * FROM open_leads WHERE FALSE`},
     {sql:`CREATE TABLE IF NOT EXISTS ${ident(STAGING_TABLE)} (
       batch_id TEXT NOT NULL,
       seq INTEGER NOT NULL,
