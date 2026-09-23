@@ -19,4 +19,5 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances 
 
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
 Write-Host "Scheduled task installed: $taskName"
-Write-Host "Runs daily at 07:00, 09:00, 12:00 and 15:00 while this Windows user is logged in."
+Write-Host "Open leads refresh daily at 07:00, 09:00, 12:00 and 15:00."
+Write-Host "Historical activity (daily/weekly/monthly) will use a separate 07:00-only task once its CRM rules are finalized."
