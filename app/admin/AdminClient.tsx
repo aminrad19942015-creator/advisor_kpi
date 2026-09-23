@@ -9,8 +9,8 @@ type QaResult={ok:boolean;checkedAt?:string;durationMs?:number;checks?:{key:stri
 type CrmConfig=any;
 
 function CrmConfigPanel({css}:{css:any}){
- const [config,setConfig]=useState<CrmConfig|null>(null),[busy,setBusy]=useState(false),[msg,setMsg]=useState('');
- useEffect(()=>{(async()=>{try{const r=await fetch('/api/admin/crm-config',{cache:'no-store'});const j=await r.json();if(r.ok&&j.ok)setConfig(j.config);else setMsg(j.error||'خطا در دریافت تنظیمات CRM');}catch(e:any){setMsg(e?.message||String(e));}})()},[]);
+ const [config,setConfig]=useState<CrmConfig|null>(null),[busy,setBusy]=useState(false),[msg,setMsg]=useState(''),[status,setStatus]=useState<any>(null);
+ useEffect(()=>{(async()=>{try{const [r,s]=await Promise.all([fetch('/api/admin/crm-config',{cache:'no-store'}),fetch('/api/admin/crm-status',{cache:'no-store'})]);const j=await r.json();const sj=await s.json();if(r.ok&&j.ok)setConfig(j.config);else setMsg(j.error||'خطا در دریافت تنظیمات CRM');if(s.ok&&sj.ok)setStatus(sj);}catch(e:any){setMsg(e?.message||String(e));}})()},[]);
  const text=(v:any)=>Array.isArray(v)?v.join('\n'):'';
  const list=(v:string)=>v.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
  const set=(path:string[],value:any)=>setConfig((prev:any)=>{const x=structuredClone(prev||{});let cur=x;for(let i=0;i<path.length-1;i++){cur[path[i]]??={};cur=cur[path[i]];}cur[path[path.length-1]]=value;return x;});
@@ -24,6 +24,13 @@ function CrmConfigPanel({css}:{css:any}){
    <button type="button" style={css.button} disabled={busy} onClick={save}>{busy?'در حال ذخیره...':'ذخیره تنظیمات CRM'}</button>
   </div>
   {msg&&<p style={{color:msg.includes('ذخیره شد')?'#7ce0d4':'#f0b95a'}}>{msg}</p>}
+  {status&&<div style={{...css.grid,marginTop:14}}>
+   <div style={css.kpi}><div style={css.muted}>Open Leads CRM</div><b>{status.counts?.open_leads_crm_shadow??0} ردیف</b><div style={css.muted}>{status.open?.lastSyncAt?new Date(status.open.lastSyncAt).toLocaleString('fa-IR'):'بدون Sync'}</div></div>
+   <div style={css.kpi}><div style={css.muted}>Lead D / W / M</div><b>{status.counts?.daily_leads??0} / {status.counts?.weekly_leads??0} / {status.counts?.monthly_leads??0}</b></div>
+   <div style={css.kpi}><div style={css.muted}>Opportunity D / W / M</div><b>{status.counts?.daily_opportunities??0} / {status.counts?.weekly_opportunities??0} / {status.counts?.monthly_opportunities??0}</b></div>
+   <div style={css.kpi}><div style={css.muted}>Calls D / W / M</div><b>{status.counts?.daily_calls??0} / {status.counts?.weekly_calls??0} / {status.counts?.monthly_calls??0}</b></div>
+   <div style={css.kpi}><div style={css.muted}>Ticket D / W / M</div><b>{status.counts?.daily_tickets??0} / {status.counts?.weekly_tickets??0} / {status.counts?.monthly_tickets??0}</b></div>
+  </div>}
   <div style={{...css.grid,marginTop:18}}>
    <div style={css.kpi}><b>API اصلی</b><div style={{height:10}}/><label>CRM Origin</label><input style={mini} value={config.crmOrigin||''} onChange={e=>set(['crmOrigin'],e.target.value)}/><div style={{height:8}}/><label>API Version</label><input style={mini} value={config.apiVersion||''} onChange={e=>set(['apiVersion'],e.target.value)}/><div style={{height:8}}/><label>Open Leads Entity</label><input style={mini} value={config.openLeads?.entity||''} onChange={e=>set(['openLeads','entity'],e.target.value)}/><div style={{height:8}}/><label>منبع Open Leads</label><select style={mini} value={config.openLeads?.sourceMode||'crm'} onChange={e=>set(['openLeads','sourceMode'],e.target.value)}><option value="crm">CRM</option><option value="excel">Excel</option></select></div>
    <div style={css.kpi}><b>زمان‌بندی</b><div style={{height:10}}/><label>Open Leads — هر خط یک ساعت</label><textarea style={{...area,minHeight:82}} value={text(config.schedules?.openLeads)} onChange={e=>set(['schedules','openLeads'],list(e.target.value))}/><div style={{height:8}}/><label>Activity — هر خط یک ساعت</label><textarea style={{...area,minHeight:62}} value={text(config.schedules?.activity)} onChange={e=>set(['schedules','activity'],list(e.target.value))}/></div>
