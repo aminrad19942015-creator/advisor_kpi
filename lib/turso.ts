@@ -24,7 +24,7 @@ function pgClient(){
  if(!pg){
   const url=process.env.SUPABASE_DATABASE_URL;
   if(!url) throw new Error('SUPABASE_DATABASE_URL is not configured.');
-  pg=postgres(url,{max:3,idle_timeout:20,connect_timeout:20,prepare:false});
+  pg=postgres(url,{max:6,idle_timeout:20,connect_timeout:20,prepare:false});
  }
  return pg;
 }
@@ -58,9 +58,7 @@ async function postgresBatch(statements:TursoStatement[]):Promise<any[][]>{
    return out;
   });
  }
- const out:any[]=[];
- for(const s of statements)out.push(await pgExec(sql,s));
- return out;
+ return Promise.all(statements.map(s=>pgExec(sql,s)));
 }
 
 export function databaseProvider(){return usePostgres()?'Supabase':'Turso';}
