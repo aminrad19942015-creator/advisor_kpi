@@ -5,6 +5,7 @@ const {loadCrmConfig}=require('./config-client');
 require('dotenv').config({path:path.join(__dirname,'.env.local')});
 
 let CRM_ORIGIN='https://mxrm.emofid.com';
+let CRM_API_PREFIX='/api/data/v9.0';
 const shadowUrl=process.env.DASHBOARD_API_URL||'https://advisor-kpi.vercel.app/api/crm-shadow';
 const API_URL=process.env.DASHBOARD_ACTIVITY_API_URL||shadowUrl.replace(/\/crm-shadow\/?$/,'/crm-activity');
 const username=(process.env.CRM_USERNAME||'').trim();
@@ -46,7 +47,7 @@ async function authenticate(page){
     console.log('ADFS login completed.');
   }else console.log('Existing CRM session found.');
   await page.waitForTimeout(2500);
-  const probe=await page.evaluate(async()=>{const r=await fetch('/api/data/v9.0/WhoAmI',{credentials:'include',headers:{Accept:'application/json'}});return r.status;});
+  const probe=await page.evaluate(async()=>{const r=await fetch(CRM_API_PREFIX+'/WhoAmI',{credentials:'include',headers:{Accept:'application/json'}});return r.status;});
   if(probe!==200) throw new Error('WhoAmI failed HTTP '+probe);
   console.log('CRM authentication validated.');
 }
@@ -79,7 +80,7 @@ async function fetchIncidentMap(page,ids,label,caseEntity='incidents'){
       'ms_nationalnumber','modifiedon','_modifiedby_value','createdon','_createdby_value'
     ].join(',');
     const rows=await fetchPaged(page,label+' cases '+(Math.floor(i/35)+1),
-      '/api/data/v9.0/'+caseEntity+'?$select='+select+'&$filter='+encodeURIComponent(filter));
+      CRM_API_PREFIX+'/'+caseEntity+'?$select='+select+'&$filter='+encodeURIComponent(filter));
     for(const row of rows) map.set(String(row.incidentid||'').toLowerCase(),row);
   }
   return map;
@@ -96,7 +97,7 @@ async function fetchTickets(page,range,label,ticketConfig){
   const allowedRanks=new Set((ticketConfig?.customerRanks||[]).map(normalizeFa));
   const qFilter=`${dateField} ge ${range.start} and ${dateField} lt ${range.end}`;
   const queueRows=await fetchPaged(page,label+' queue items',
-    '/api/data/v9.0/'+queueEntity+'?$select='+qSelect+'&$filter='+encodeURIComponent(qFilter));
+    CRM_API_PREFIX+'/'+queueEntity+'?$select='+qSelect+'&$filter='+encodeURIComponent(qFilter));
 
   const queueFiltered=queueRows.filter(r=>allowedQueues.has(normalizeFa(formatted(r,'_queueid_value'))));
   console.log(label+' allowed queue rows:',queueFiltered.length);
@@ -177,6 +178,7 @@ async function upload(datasets,range){
   try{
     const crmConfig=await loadCrmConfig(connectorToken);
     CRM_ORIGIN=String(crmConfig.crmOrigin||CRM_ORIGIN).replace(/\/$/,'');
+    CRM_API_PREFIX='/api/data/'+String(crmConfig.apiVersion||'v9.0').replace(/^\/+|\/+$/g,'');
     const ticketConfig=crmConfig.ticket||{};
     if(ticketConfig.enabled===false||String(ticketConfig.sourceMode||'crm').toLowerCase()!=='crm'){
       console.log('Ticket CRM sync skipped by admin configuration.');
