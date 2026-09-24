@@ -151,7 +151,47 @@ export async function getLeadStatusKpiDetails(period:string,type:string,filters:
   LIMIT 4000`,lw.args);
 }
 
-export async function getActivityDetails(period:string,type:string,user:string){let source:'lead'|'opp'|'call'|'ticket',where:string;if(type==='lead'||type==='talked'){source='lead';where='owner=? AND '+(type==='talked'?TALKED_CONDITION_SQL:CLOSED_CONDITION_SQL)}else if(type==='opp'){source='opp';where="creator=? AND registration_type='OPP'"}else if(type==='call'){source='call';where='"user"=?'}else if(type==='t8'){source='call';where="\"user\"=? AND UPPER(COALESCE(queue,''))='T8'"}else if(type==='ticket'){source='ticket';where='owner=?'}else return [];const rows=await tursoSelect(`SELECT * FROM ${table(period,source)} WHERE ${where} LIMIT 4000`,[user]);if(source==='call')return rows.map((r:any)=>{const {phone_number,destination_number,...rest}=r;return {...rest,'شماره تماس مشتری':phone_number||destination_number||''}});return rows;}
+export async function getActivityDetails(period:string,type:string,user:string,filters:any={}){
+ let source:'lead'|'opp'|'call'|'ticket';
+ if(type==='lead'||type==='talked')source='lead';
+ else if(type==='opp')source='opp';
+ else if(type==='call'||type==='t8')source='call';
+ else if(type==='ticket')source='ticket';
+ else return [];
+
+ const scoped={...(filters||{}),advisor:[user]};
+ const w=whereFor(scoped,source,period);
+ let extra='';
+ if(type==='lead')extra=' AND '+CLOSED_CONDITION_SQL;
+ if(type==='talked')extra=' AND '+TALKED_CONDITION_SQL;
+ if(type==='opp')extra=" AND registration_type='OPP'";
+ if(type==='t8')extra=" AND UPPER(COALESCE(queue,''))='T8'";
+ const rows=await tursoSelect(`SELECT * FROM ${table(period,source)}${w.where}${extra} LIMIT 4000`,w.args);
+ if(source==='call')return rows.map((r:any)=>{const {phone_number,destination_number,...rest}=r;return {...rest,'شماره تماس مشتری':phone_number||destination_number||''}});
+ return rows;
+}
+
+export async function getPeriodKpiDetails(period:string,type:string,filters:any={}){
+ let source:'lead'|'opp'|'call'|'ticket';
+ if(['closed','talked','noStatus','noResponse'].includes(type))source='lead';
+ else if(type==='oppLead'||type==='opp')source='opp';
+ else if(type==='calls'||type==='t8')source='call';
+ else if(type==='tickets')source='ticket';
+ else throw new Error('نوع KPI نامعتبر است.');
+
+ const w=whereFor(filters||{},source,period);
+ let extra='';
+ if(type==='closed')extra=' AND '+CLOSED_CONDITION_SQL;
+ if(type==='talked')extra=' AND '+TALKED_CONDITION_SQL;
+ if(type==='noStatus')extra=" AND REPLACE(TRIM(COALESCE(last_status,'')),' ','')='عدمتعیینوضعیتدرزمانمقرر'";
+ if(type==='noResponse')extra=" AND REPLACE(TRIM(COALESCE(last_status,'')),' ','') IN ('عدمپاسخ(2بار)','عدمپاسخ(۲بار)')";
+ if(type==='oppLead')extra=" AND registration_type='LEAD'";
+ if(type==='opp')extra=" AND registration_type='OPP'";
+ if(type==='t8')extra=" AND UPPER(COALESCE(queue,''))='T8'";
+ const rows=await tursoSelect(`SELECT * FROM ${table(period,source)}${w.where}${extra} LIMIT 5000`,w.args);
+ if(source==='call')return rows.map((r:any)=>{const {phone_number,destination_number,...rest}=r;return {...rest,'شماره تماس مشتری':phone_number||destination_number||''}});
+ return rows;
+}
 export async function getDimensionDetails(period:string,source:'lead'|'opp'|'call'|'ticket',field:string,value:string){const allowed:any={lead:{lastStatus:'last_status',customerRank:'customer_rank',source:'source',campaign:'campaign',sourceTicketContactTopic:'source_ticket_contact_topic'},opp:{registrationType:'registration_type',status:'status'},call:{subject:'subject'},ticket:{statusReason:'status_reason',contactTopic:'contact_topic'}};const col=allowed[source]?.[field];if(!col)throw new Error('فیلد Drill-down نامعتبر است.');return tursoSelect(`SELECT * FROM ${table(period,source)} WHERE COALESCE(${col},'')=? LIMIT 4000`,[value==='بدون مقدار'?'':value]);}
 export async function getRepeatedCallDetails(period:string){const t=table(period,'call');return tursoSelect(`SELECT c.* FROM ${t} c INNER JOIN (SELECT "user",lead_number FROM ${t} WHERE COALESCE(lead_number,'')<>'' GROUP BY "user",lead_number HAVING COUNT(*)>1) r ON r."user"=c."user" AND r.lead_number=c.lead_number LIMIT 5000`);}
 export async function getAdvisorTrend(period:string,advisor:string){const member=await tursoSelect('SELECT name FROM team_members WHERE name=? LIMIT 1',[advisor]);if(!member.length)return [];const L=table(period,'lead'),O=table(period,'opp'),C=table(period,'call'),T=table(period,'ticket');const q:any=await namedBatch([{key:'leads',sql:`SELECT (last_modified_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",SUM(CASE WHEN ${TALKED_CONDITION_SQL} THEN 1 ELSE 0 END) talked FROM ${L} WHERE owner=? AND last_modified_date<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]},{key:'opps',sql:`SELECT (created_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) opp FROM ${O} WHERE creator=? AND registration_type='OPP' AND created_date<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]},{key:'calls',sql:`SELECT (start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C} WHERE "user"=? AND start_date<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]},{key:'tickets',sql:`SELECT (closed_at::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) tickets FROM ${T} WHERE owner=? AND closed_at<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]}]);const m:any={};const touch=(d:string)=>m[d]||(m[d]={day:d,talked:0,opp:0,calls:0,t8:0,tickets:0,total:0});for(const r of q.leads||[])touch(r.day).talked=Number(r.talked||0);for(const r of q.opps||[])touch(r.day).opp=Number(r.opp||0);for(const r of q.calls||[]){const x=touch(r.day);x.calls=Number(r.calls||0);x.t8=Number(r.t8||0)}for(const r of q.tickets||[])touch(r.day).tickets=Number(r.tickets||0);return Object.keys(m).sort().map(d=>{const r=m[d];r.total=r.talked+r.opp+r.t8+r.tickets;return r});}
