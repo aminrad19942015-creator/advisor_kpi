@@ -19,8 +19,8 @@ const handlers:Record<string,(args:any[])=>Promise<any>>={
  getActivityDetails: async ([period,type,user,filters])=>getActivityDetails(period,type,user,filters||{}),
  getPeriodKpiDetails: async ([period,type,filters])=>getPeriodKpiDetails(period,type,filters||{}),
  getLeadStatusKpiDetails: async ([period,type,filters])=>getLeadStatusKpiDetails(period,type,filters||{}),
- getDimensionDetails: async ([period,source,field,value])=>getDimensionDetails(period,source,field,value),
- getRepeatedCallDetails: async ([period])=>getRepeatedCallDetails(period),
+ getDimensionDetails: async ([period,source,field,value,filters])=>getDimensionDetails(period,source,field,value,filters||{}),
+ getRepeatedCallDetails: async ([period,filters])=>getRepeatedCallDetails(period,filters||{}),
  getAdvisorTrend: async ([period,advisor])=>getAdvisorTrend(period,advisor),
  getDashboardMeta: async ()=>getMeta(),
 };
