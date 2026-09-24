@@ -63,6 +63,7 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
  const roleBow=whereFor(benchmarkFilters,'opp',period,'o');
  const q:any=await namedBatch([
   {key:'leadKpi',sql:`SELECT
+    COUNT(*) handled,
     SUM(CASE WHEN ${CLOSED_CONDITION_SQL} THEN 1 ELSE 0 END) closed,
     SUM(CASE WHEN ${TALKED_CONDITION_SQL} THEN 1 ELSE 0 END) talked,
     SUM(CASE WHEN TRIM(COALESCE(last_status,''))='عدم تعیین وضعیت در زمان مقرر' THEN 1 ELSE 0 END) AS "noStatusCount",
@@ -133,9 +134,9 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
  for(const g of roleGroups)roleTrend[g]=buildTrend([[(q.roleTrendLead||[]).filter((r:any)=>r.roleGroup===g),['talked']],[(q.roleTrendOpp||[]).filter((r:any)=>r.roleGroup===g),['opp']],[(q.roleTrendCall||[]).filter((r:any)=>r.roleGroup===g),['calls','t8']],[(q.roleTrendTicket||[]).filter((r:any)=>r.roleGroup===g),['tickets']]]);
  const roleCounts={guide:0,advisor:0,senior:0};
  for(const p of q.allTeamMembers||[]){if(p.role==='راهنما')roleCounts.guide++;else if(p.role==='مشاور')roleCounts.advisor++;else if(p.role==='مشاور ارشد'||p.role==='سرتیم')roleCounts.senior++;}
- const closed=Number(lk.closed||0),talked=Number(lk.talked||0),noStatusCount=Number(lk.noStatusCount||0),noResponseCount=Number(lk.noResponseCount||0),oppLead=Number(ok.oppLead||0),opp=Number(ok.opp||0),calls=Number(ck.calls||0),t8=Number(ck.t8||0),tickets=Number(tk.tickets||0),uniqueCalls=Number(ck.uniqueCalls||0),repeatCalls=Number(rk.repeatCalls||0);
- const noStatusRate=closed?noStatusCount/closed*100:0,noResponseRate=closed?noResponseCount/closed*100:0;
- return {period,days,dayCount,unitAdvisorCount:(q.allTeamMembers||[]).length,roleTrend,roleCounts,kpis:{total:talked+opp+t8+tickets,closed,talked,noStatusCount,noStatusRate,noResponseCount,noResponseRate,oppLead,opp,calls,t8,tickets,closeAvg:lk.closeAvg==null?null:Number(lk.closeAvg),uniqueCalls,repeatCalls,callAvg:calls/dayCount,closedAvg:closed/dayCount,talkedAvg:talked/dayCount},advisors,dimensions:{leadState:pairs(q.leadState),rank:pairs(q.rank),leadSource:pairs(q.leadSource),campaign:pairs(q.campaign),oppKind:pairs(q.oppKind),oppStatus:pairs(q.oppStatus),callSubject:pairs(q.callSubject),leadTicketTopic:pairs(q.leadTicketTopic),ticketState:pairs(q.ticketState),ticketSubject:pairs(q.ticketSubject)},trend,teamTrend,unitTrend};
+ const handled=Number(lk.handled||0),closed=Number(lk.closed||0),talked=Number(lk.talked||0),noStatusCount=Number(lk.noStatusCount||0),noResponseCount=Number(lk.noResponseCount||0),oppLead=Number(ok.oppLead||0),opp=Number(ok.opp||0),calls=Number(ck.calls||0),t8=Number(ck.t8||0),tickets=Number(tk.tickets||0),uniqueCalls=Number(ck.uniqueCalls||0),repeatCalls=Number(rk.repeatCalls||0);
+ const noStatusRate=handled?noStatusCount/handled*100:0,noResponseRate=handled?noResponseCount/handled*100:0;
+ return {period,days,dayCount,unitAdvisorCount:(q.allTeamMembers||[]).length,roleTrend,roleCounts,kpis:{total:talked+opp+t8+tickets,handled,closed,talked,noStatusCount,noStatusRate,noResponseCount,noResponseRate,oppLead,opp,calls,t8,tickets,closeAvg:lk.closeAvg==null?null:Number(lk.closeAvg),uniqueCalls,repeatCalls,callAvg:calls/dayCount,closedAvg:closed/dayCount,talkedAvg:talked/dayCount},advisors,dimensions:{leadState:pairs(q.leadState),rank:pairs(q.rank),leadSource:pairs(q.leadSource),campaign:pairs(q.campaign),oppKind:pairs(q.oppKind),oppStatus:pairs(q.oppStatus),callSubject:pairs(q.callSubject),leadTicketTopic:pairs(q.leadTicketTopic),ticketState:pairs(q.ticketState),ticketSubject:pairs(q.ticketSubject)},trend,teamTrend,unitTrend};
 }
 
 export async function getLeadStatusKpiDetails(period:string,type:string,filters:any={}){
