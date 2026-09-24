@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
 const { loadCrmConfig } = require('./config-client');
+const { writeSnapshot } = require('./local-backup');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
 let CRM_ORIGIN = 'https://mxrm.emofid.com';
@@ -241,6 +242,9 @@ async function upload(datasets,range){
       monthly_calls:monthlyCalls.length
     });
 
+    writeSnapshot('calls',calls,{source:'crm',range:ranges.daily});
+    writeSnapshot('weekly_calls',weeklyCalls,{source:'crm',range:ranges.weekly});
+    writeSnapshot('monthly_calls',monthlyCalls,{source:'crm',range:ranges.monthly});
     const result=await upload({
       calls,
       weekly_calls:weeklyCalls,
