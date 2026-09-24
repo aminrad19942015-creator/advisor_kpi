@@ -1,103 +1,128 @@
 # Advisor KPI Dashboard
 
-Production migration of the investment-advisor performance dashboard from Google Apps Script to Next.js/Node.js on Vercel, preserving the original UI/UX and KPI logic.
+Production performance dashboard for the investment-advisor unit, migrated from Google Apps Script / Excel-first operation to Next.js on Vercel with Supabase/PostgreSQL as the operational database.
 
-## Production
+## Production architecture
+
+- Frontend / API: Next.js 16 on Vercel
+- Operational database: Supabase PostgreSQL
+- CRM ingestion: Windows Connector -> CRM API -> local snapshot backup -> Supabase
+- Manual fallback: Admin Excel import
+- Local recovery: rolling compressed snapshots on the Connector workstation
+
+The dashboard no longer depends on Turso.
+
+## Production URLs
 
 - App: `https://advisor-kpi.vercel.app/`
 - Admin: `https://advisor-kpi.vercel.app/admin`
 - Health: `https://advisor-kpi.vercel.app/api/health`
-- Data source: Turso
-- Runtime: Next.js / Node.js on Vercel
-- UI: preserved from the GAS dashboard
 
-## Environment variables
+## Required Vercel environment variables
 
-Required in Vercel for Production and Preview:
-
-- `TURSO_DATABASE_URL`
-- `TURSO_AUTH_TOKEN`
+- `SUPABASE_DATABASE_URL`
 - `ADMIN_PASSWORD`
+- `CRM_CONNECTOR_TOKEN`
 
 Secrets must never be committed to the repository.
 
-## Data architecture
+## Automated refresh policy
 
-Vercel is the execution and presentation layer only. Durable dashboard data remains in Turso. Excel source files are not retained permanently on Vercel.
+Windows Task Scheduler runs the local Connector only Saturday through Thursday.
 
-## Migration baseline
+Open Leads:
+- 07:00
+- 09:00
+- 12:00
+- 15:00
 
-The 1:1 migration from Google Apps Script is complete. The production baseline preserves the original KPI definitions, filters, drill-down behavior, SLA logic and dashboard UI.
+Historical activity (Daily / Weekly / Monthly):
+- 07:00 only
 
-Lead SLA rules:
+Friday:
+- no automatic CRM refresh
 
-- Real-person leads: 18 full days
-- Legal-entity leads: 60 full days
-- Near deadline: final 3 days before SLA expiry
+The runner scripts also contain a Friday safety guard.
 
-## Admin Excel Import
+## CRM datasets
 
-The admin import pipeline is operational.
+Operational CRM datasets:
+- Open Leads
+- Lead: Daily / Weekly / Monthly
+- Opportunity: Daily / Weekly / Monthly
+- Calls: Daily / Weekly / Monthly
+- Ticket: Daily / Weekly / Monthly
 
-Flow:
+Business rules are stored in Supabase and editable from Admin where appropriate. Technical CRM wiring (origin, API version, entity names, technical date fields and lookup source fields) is read-only from the Admin UI and protected server-side.
 
-1. Admin selects one or more supported Excel inputs.
-2. Files are uploaded in chunks and held temporarily in Turso staging.
-3. Filename, workbook structure, required sheet/columns and database mappings are validated.
-4. Preflight compares current database row counts with the incoming dataset and surfaces warnings.
-5. Each selected file replaces the complete previous version of its matching Dataset; data is never appended.
-6. Replacement uses a staging table before the production table is mutated.
-7. Destination row count is verified after replacement.
-8. `dashboard_meta.data_version` and `dashboard_meta.last_sync_at` are updated after a successful replacement.
-9. Verified imports are recorded in the admin import history.
-10. Old staging chunks are automatically eligible for cleanup and source Excel files are not stored on Vercel.
+## Admin
 
-Supported datasets:
+The Admin dashboard supports:
+- CRM / Excel source selection per dataset
+- business-rule management
+- CRM row-count / sync status
+- Excel Preflight + full Replace + Verify
+- local-backup recovery request
+- production QA
+- Excel import history
+- update-policy help modal
 
-- `team_members`
-- `open_leads`
-- `daily_leads`, `weekly_leads`, `monthly_leads`
-- `daily_opportunities`, `weekly_opportunities`, `monthly_opportunities`
-- `daily_calls`, `weekly_calls`, `monthly_calls`
-- `daily_tickets`, `weekly_tickets`, `monthly_tickets`
+Editable business rules include values such as:
+- allowed business units
+- Lead statuses
+- Ticket queues
+- Ticket topics
+- excluded Ticket status reasons
+- customer ranks
+
+A new value inside an existing rule list can be added directly in Admin. A completely new rule dimension, CRM field, relationship or logical condition requires a code/schema change.
+
+## Excel fallback rules
+
+Excel is a controlled fallback path.
+
+1. Set the target dataset source to `Excel` in Admin.
+2. Upload the supported workbook.
+3. Run Preflight.
+4. Review row-count changes and warnings.
+5. Replace the target dataset.
+6. Verify row count.
+7. Run Final QA.
+
+Replace is complete replacement, not append. If the source is switched back to CRM, the next eligible CRM sync becomes authoritative again.
+
+## Local backup and recovery
+
+Before CRM data is pushed to Supabase, the Connector saves a compressed local snapshot.
+
+Default local backup:
+- `connector/data-backup/<dataset>/latest.json.gz`
+- rolling archive retained for 7 days by default
+
+The Admin recovery button queues a restore request. The Connector processes the request on its next run and restores the latest local snapshots into Supabase.
 
 ## Production QA
 
-The Admin dashboard includes a final QA control that checks:
+Final QA checks:
+- Metadata
+- team members
+- Open Leads
+- Daily / Weekly / Monthly summaries
+- production row availability for all operational datasets
 
-- Metadata and latest sync state
-- Team row count
-- Open-leads row count
-- Daily / weekly / monthly activity summaries
-- Row availability for all 14 production datasets
+Release health requires:
+- latest Vercel deployment green
+- `/api/health` healthy
+- Admin Final QA successful
+- Team / Open Leads / Daily / Weekly / Monthly pages load
+- filters and drilldowns return data without RPC errors
 
-The verified migration baseline passed all QA checks after the first full production import.
+## Migration status
 
-## Operational procedure for future updates
-
-1. Open `/admin` and sign in.
-2. Select only the Excel files that changed, or all files when a full refresh is required.
-3. Run **Preflight**.
-4. Review row-count changes and warnings.
-5. Replace individual Datasets or all validated Datasets.
-6. Confirm **Replace + Verify** success.
-7. Run **Final QA**.
-8. Open the main dashboard for a quick visual check.
-
-## Release checks
-
-Before considering a release healthy:
-
-- GitHub Actions `Build` must pass.
-- `/api/health` must return `ok: true`.
-- Admin Final QA must pass.
-- Team, open leads, daily, weekly and monthly pages must load.
-- Filters and drill-downs must return data without RPC errors.
-- Core production KPIs should match the verified source files.
-
-## Security
-
-- Turso credentials and the Admin password are supplied only through Vercel Environment Variables.
-- Admin sessions use an HttpOnly, Secure, SameSite=Strict cookie.
-- Admin import, history and QA APIs require the Admin session.
-- Security response headers are configured globally in Next.js.
+The production cutover is complete:
+- Google Apps Script is no longer required by the dashboard runtime.
+- Turso is no longer required by the dashboard runtime.
+- Supabase is the only operational database.
+- CRM ingestion is automated through the Windows Connector.
+- Excel remains available as a manual fallback.
+- local snapshots provide a recovery path.
