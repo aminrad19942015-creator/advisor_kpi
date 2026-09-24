@@ -6,6 +6,10 @@ $base = "https://raw.githubusercontent.com/aminrad19942015-creator/advisor_kpi/m
 $files = @(
   "sync.js",
   "config-client.js",
+  "local-backup.js",
+  "recovery-lib.js",
+  "recover-local.js",
+  "command-client.js",
   "lead-opportunity-sync.js",
   "calls-sync.js",
   "tickets-sync.js",
