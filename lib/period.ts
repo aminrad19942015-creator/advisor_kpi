@@ -10,7 +10,7 @@ function table(period:string,type:'lead'|'opp'|'call'|'ticket'){
  if(!p)throw new Error('بازه نامعتبر: '+period);
  return p+({lead:'leads',opp:'opportunities',call:'calls',ticket:'tickets'} as const)[type];
 }
-function whereFor(filters:any,source:'lead'|'opp'|'call'|'ticket',period?:string){
+function whereFor(filters:any,source:'lead'|'opp'|'call'|'ticket',period?:string,outerAlias?:string){
  filters=filters||{};const args:any[]=[];const person=source==='lead'?'owner':source==='opp'?'creator':source==='call'?'"user"':'owner';let where=' WHERE 1=1';
  const advisors=norm(filters.advisor);if(advisors.length)where+=sqlIn(person,advisors,args);
  const campaigns=norm(filters.campaign);
@@ -20,7 +20,8 @@ function whereFor(filters:any,source:'lead'|'opp'|'call'|'ticket',period?:string
    if(!period) throw new Error('بازه برای فیلتر کمپین فرصت مشخص نیست.');
    const leadTable=table(period,'lead');
    const qs=campaigns.map(v=>{args.push(v);return '?'}).join(',');
-   where+=` AND EXISTS (SELECT 1 FROM ${leadTable} cl WHERE cl.campaign IN (${qs}) AND COALESCE(cl.lead_number,'')<>'' AND cl.lead_number=lead_number)`;
+   const outerLeadRef=(outerAlias?outerAlias:table(period,'opp'))+'.lead_number';
+   where+=` AND EXISTS (SELECT 1 FROM ${leadTable} cl WHERE cl.campaign IN (${qs}) AND COALESCE(cl.lead_number,'')<>'' AND cl.lead_number=${outerLeadRef})`;
   }
   if(source==='call'){
    if(!period) throw new Error('بازه برای فیلتر کمپین تماس مشخص نیست.');
@@ -48,6 +49,7 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
  const acw=whereFor(attendanceFilters,'call',period);
  const benchmarkFilters={campaign:norm(filters?.campaign)};
  const blw=whereFor(benchmarkFilters,'lead',period),bow=whereFor(benchmarkFilters,'opp',period),bcw=whereFor(benchmarkFilters,'call',period),btw=whereFor(benchmarkFilters,'ticket',period);
+ const roleBow=whereFor(benchmarkFilters,'opp',period,'o');
  const q:any=await namedBatch([
   {key:'leadKpi',sql:`SELECT COUNT(*) closed,
     SUM(CASE WHEN COALESCE(last_status,'') NOT IN ${TALKED_EXCLUDED_SQL} THEN 1 ELSE 0 END) talked,
@@ -96,7 +98,7 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
   {key:'unitTrendCall',sql:`SELECT (start_date::timestamptz)::date AS "day",COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C}${bcw.where} AND "user" IN (SELECT name FROM team_members) AND start_date<>'' GROUP BY "day"`,args:bcw.args},
   {key:'unitTrendTicket',sql:`SELECT (closed_at::timestamptz)::date AS "day",COUNT(*) tickets FROM ${T}${btw.where} AND owner IN (SELECT name FROM team_members) AND closed_at<>'' GROUP BY "day"`,args:btw.args},
   {key:'roleTrendLead',sql:`SELECT (l.last_modified_date::timestamptz)::date AS "day",CASE WHEN tm.role='راهنما' THEN 'guide' WHEN tm.role='مشاور' THEN 'advisor' WHEN tm.role IN ('مشاور ارشد','سرتیم') THEN 'senior' END AS "roleGroup",SUM(CASE WHEN COALESCE(l.last_status,'') NOT IN ${TALKED_EXCLUDED_SQL} THEN 1 ELSE 0 END) talked FROM ${L} l JOIN team_members tm ON tm.name=l.owner ${blw.where} AND l.last_modified_date<>'' AND tm.role IN ('راهنما','مشاور','مشاور ارشد','سرتیم') GROUP BY "day","roleGroup"`,args:blw.args},
-  {key:'roleTrendOpp',sql:`SELECT (o.created_date::timestamptz)::date AS "day",CASE WHEN tm.role='راهنما' THEN 'guide' WHEN tm.role='مشاور' THEN 'advisor' WHEN tm.role IN ('مشاور ارشد','سرتیم') THEN 'senior' END AS "roleGroup",COUNT(*) opp FROM ${O} o JOIN team_members tm ON tm.name=o.creator ${bow.where} AND o.registration_type='OPP' AND o.created_date<>'' AND tm.role IN ('راهنما','مشاور','مشاور ارشد','سرتیم') GROUP BY "day","roleGroup"`,args:bow.args},
+  {key:'roleTrendOpp',sql:`SELECT (o.created_date::timestamptz)::date AS "day",CASE WHEN tm.role='راهنما' THEN 'guide' WHEN tm.role='مشاور' THEN 'advisor' WHEN tm.role IN ('مشاور ارشد','سرتیم') THEN 'senior' END AS "roleGroup",COUNT(*) opp FROM ${O} o JOIN team_members tm ON tm.name=o.creator ${roleBow.where} AND o.registration_type='OPP' AND o.created_date<>'' AND tm.role IN ('راهنما','مشاور','مشاور ارشد','سرتیم') GROUP BY "day","roleGroup"`,args:roleBow.args},
   {key:'roleTrendCall',sql:`SELECT (c.start_date::timestamptz)::date AS "day",CASE WHEN tm.role='راهنما' THEN 'guide' WHEN tm.role='مشاور' THEN 'advisor' WHEN tm.role IN ('مشاور ارشد','سرتیم') THEN 'senior' END AS "roleGroup",COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(c.queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C} c JOIN team_members tm ON tm.name=c."user" ${bcw.where} AND c.start_date<>'' AND tm.role IN ('راهنما','مشاور','مشاور ارشد','سرتیم') GROUP BY "day","roleGroup"`,args:bcw.args},
   {key:'roleTrendTicket',sql:`SELECT (t.closed_at::timestamptz)::date AS "day",CASE WHEN tm.role='راهنما' THEN 'guide' WHEN tm.role='مشاور' THEN 'advisor' WHEN tm.role IN ('مشاور ارشد','سرتیم') THEN 'senior' END AS "roleGroup",COUNT(*) tickets FROM ${T} t JOIN team_members tm ON tm.name=t.owner ${btw.where} AND t.closed_at<>'' AND tm.role IN ('راهنما','مشاور','مشاور ارشد','سرتیم') GROUP BY "day","roleGroup"`,args:btw.args}
  ]);
