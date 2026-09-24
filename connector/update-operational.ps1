@@ -16,7 +16,8 @@ $files = @(
   "run.cmd",
   "run-history.cmd",
   "install-schedule.ps1",
-  "install-history-schedule.ps1"
+  "install-history-schedule.ps1",
+  "verify-schedule.ps1"
 )
 
 foreach ($file in $files) {
@@ -33,6 +34,11 @@ Write-Host "Installing Historical Activity schedule..."
 powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "install-history-schedule.ps1")
 
 Write-Host ""
+Write-Host "Verifying schedules..."
+powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "verify-schedule.ps1")
+
+Write-Host ""
 Write-Host "Operational connector update completed."
+Write-Host "Days: Saturday-Thursday (Friday disabled)"
 Write-Host "Open Leads: 07:00, 09:00, 12:00, 15:00"
 Write-Host "Historical activity: 07:00 only"
