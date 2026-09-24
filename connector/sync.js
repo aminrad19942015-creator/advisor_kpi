@@ -3,6 +3,7 @@ const path = require('path');
 const { chromium } = require('playwright');
 const { loadCrmConfig } = require('./config-client');
 const { writeSnapshot } = require('./local-backup');
+const { processPendingCommand } = require('./command-client');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
 let CRM_ORIGIN = 'https://mxrm.emofid.com';
@@ -208,6 +209,8 @@ async function pushShadow(rows, sourceCheckedAt) {
   const page = context.pages()[0] || await context.newPage();
 
   try {
+    const commandResult=await processPendingCommand(connectorToken);
+    if(commandResult) console.log('Admin recovery command completed:',commandResult.id);
     const crmConfig=await loadCrmConfig(connectorToken);
     CRM_ORIGIN=String(crmConfig.crmOrigin||CRM_ORIGIN).replace(/\/$/,'');
     CRM_API_PREFIX='/api/data/'+String(crmConfig.apiVersion||'v9.0').replace(/^\/+|\/+$/g,'');
