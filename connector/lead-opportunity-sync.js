@@ -2,6 +2,7 @@ const fs=require('fs');
 const path=require('path');
 const {chromium}=require('playwright');
 const {loadCrmConfig}=require('./config-client');
+const {writeSnapshot}=require('./local-backup');
 require('dotenv').config({path:path.join(__dirname,'.env.local')});
 
 let CRM_ORIGIN='https://mxrm.emofid.com';
@@ -95,6 +96,7 @@ async function upload(datasets,range){
   const datasets={};
   if(leadOn){datasets.leads=await fetchLeads(page,r.daily,'Daily leads',leadCfg);datasets.weekly_leads=await fetchLeads(page,r.weekly,'Weekly leads',leadCfg);datasets.monthly_leads=await fetchLeads(page,r.monthly,'Monthly leads',leadCfg);}
   if(oppOn){datasets.opportunities=await fetchOpps(page,r.daily,'Daily opportunities',oppCfg);datasets.weekly_opportunities=await fetchOpps(page,r.weekly,'Weekly opportunities',oppCfg);datasets.monthly_opportunities=await fetchOpps(page,r.monthly,'Monthly opportunities',oppCfg);}
+  for(const [dataset,rows] of Object.entries(datasets)) writeSnapshot(dataset,rows,{source:'crm'});
   const result=await upload(datasets,r.daily);
   fs.writeFileSync(path.join(runtimeDir,'last-lead-opp-sync.json'),JSON.stringify({status:'success',startedAt,finishedAt:new Date().toISOString(),stored:result.counts},null,2),'utf8');
   console.log('=== CRM LEAD/OPPORTUNITY SYNC SUCCESS ===');console.log('Stored rows:',result.counts);
