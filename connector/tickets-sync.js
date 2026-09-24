@@ -2,6 +2,7 @@ const fs=require('fs');
 const path=require('path');
 const {chromium}=require('playwright');
 const {loadCrmConfig}=require('./config-client');
+const {writeSnapshot}=require('./local-backup');
 require('dotenv').config({path:path.join(__dirname,'.env.local')});
 
 let CRM_ORIGIN='https://mxrm.emofid.com';
@@ -188,6 +189,9 @@ async function upload(datasets,range){
     const tickets=await fetchTickets(page,ranges.daily,'Daily tickets',ticketConfig);
     const weeklyTickets=await fetchTickets(page,ranges.weekly,'Weekly tickets',ticketConfig);
     const monthlyTickets=await fetchTickets(page,ranges.monthly,'Monthly tickets',ticketConfig);
+    writeSnapshot('tickets',tickets,{source:'crm',range:ranges.daily});
+    writeSnapshot('weekly_tickets',weeklyTickets,{source:'crm',range:ranges.weekly});
+    writeSnapshot('monthly_tickets',monthlyTickets,{source:'crm',range:ranges.monthly});
     const result=await upload({tickets,weekly_tickets:weeklyTickets,monthly_tickets:monthlyTickets},ranges.daily);
     fs.writeFileSync(path.join(runtimeDir,'last-tickets-sync.json'),JSON.stringify({status:'success',startedAt,finishedAt:new Date().toISOString(),stored:result.counts},null,2),'utf8');
     console.log('');
