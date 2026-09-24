@@ -68,7 +68,7 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
     SUM(CASE WHEN ${TALKED_CONDITION_SQL} THEN 1 ELSE 0 END) talked,
     SUM(CASE WHEN TRIM(COALESCE(last_status,''))='عدم تعیین وضعیت در زمان مقرر' THEN 1 ELSE 0 END) AS "noStatusCount",
     SUM(CASE WHEN REPLACE(TRIM(COALESCE(last_status,'')),' ','') IN ('عدمپاسخ(2بار)','عدمپاسخ(۲بار)') THEN 1 ELSE 0 END) AS "noResponseCount",
-    AVG(CASE WHEN NULLIF(created_date,'') IS NOT NULL AND NULLIF(last_modified_date,'') IS NOT NULL AND last_modified_date::timestamptz>=created_date::timestamptz THEN EXTRACT(EPOCH FROM (last_modified_date::timestamptz-created_date::timestamptz))/86400.0 END) AS "closeAvg"
+    AVG(CASE WHEN ${CLOSED_CONDITION_SQL} AND NULLIF(created_date,'') IS NOT NULL AND NULLIF(last_modified_date,'') IS NOT NULL AND last_modified_date::timestamptz>=created_date::timestamptz THEN EXTRACT(EPOCH FROM (last_modified_date::timestamptz-created_date::timestamptz))/86400.0 END) AS "closeAvg"
     FROM ${L}${lw.where}`,args:lw.args},
   {key:'oppKpi',sql:`SELECT SUM(CASE WHEN registration_type='LEAD' THEN 1 ELSE 0 END) AS "oppLead",SUM(CASE WHEN registration_type='OPP' THEN 1 ELSE 0 END) opp FROM ${O}${ow.where}`,args:ow.args},
   {key:'callKpi',sql:`SELECT COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8,COUNT(DISTINCT CASE WHEN COALESCE(lead_number,'')<>'' THEN "user"||'|'||lead_number END) AS "uniqueCalls" FROM ${C}${cw.where}`,args:cw.args},
@@ -193,6 +193,18 @@ export async function getPeriodKpiDetails(period:string,type:string,filters:any=
  if(source==='call')return rows.map((r:any)=>{const {phone_number,destination_number,...rest}=r;return {...rest,'شماره تماس مشتری':phone_number||destination_number||''}});
  return rows;
 }
-export async function getDimensionDetails(period:string,source:'lead'|'opp'|'call'|'ticket',field:string,value:string){const allowed:any={lead:{lastStatus:'last_status',customerRank:'customer_rank',source:'source',campaign:'campaign',sourceTicketContactTopic:'source_ticket_contact_topic'},opp:{registrationType:'registration_type',status:'status'},call:{subject:'subject'},ticket:{statusReason:'status_reason',contactTopic:'contact_topic'}};const col=allowed[source]?.[field];if(!col)throw new Error('فیلد Drill-down نامعتبر است.');return tursoSelect(`SELECT * FROM ${table(period,source)} WHERE COALESCE(${col},'')=? LIMIT 4000`,[value==='بدون مقدار'?'':value]);}
-export async function getRepeatedCallDetails(period:string){const t=table(period,'call');return tursoSelect(`SELECT c.* FROM ${t} c INNER JOIN (SELECT "user",lead_number FROM ${t} WHERE COALESCE(lead_number,'')<>'' GROUP BY "user",lead_number HAVING COUNT(*)>1) r ON r."user"=c."user" AND r.lead_number=c.lead_number LIMIT 5000`);}
+export async function getDimensionDetails(period:string,source:'lead'|'opp'|'call'|'ticket',field:string,value:string,filters:any={}){
+ const allowed:any={lead:{lastStatus:'last_status',customerRank:'customer_rank',source:'source',campaign:'campaign',sourceTicketContactTopic:'source_ticket_contact_topic'},opp:{registrationType:'registration_type',status:'status'},call:{subject:'subject'},ticket:{statusReason:'status_reason',contactTopic:'contact_topic'}};
+ const col=allowed[source]?.[field];if(!col)throw new Error('فیلد Drill-down نامعتبر است.');
+ const w=whereFor(filters||{},source,period);
+ return tursoSelect(`SELECT * FROM ${table(period,source)}${w.where} AND COALESCE(${col},'')=? LIMIT 4000`,[...w.args,value==='بدون مقدار'?'':value]);
+}
+export async function getRepeatedCallDetails(period:string,filters:any={}){
+ const t=table(period,'call'),w=whereFor(filters||{},'call',period);
+ return tursoSelect(`SELECT c.* FROM ${t} c INNER JOIN (
+   SELECT "user",lead_number FROM ${t}${w.where} AND COALESCE(lead_number,'')<>''
+   GROUP BY "user",lead_number HAVING COUNT(*)>1
+ ) r ON r."user"=c."user" AND r.lead_number=c.lead_number
+ WHERE 1=1 LIMIT 5000`,w.args);
+}
 export async function getAdvisorTrend(period:string,advisor:string){const member=await tursoSelect('SELECT name FROM team_members WHERE name=? LIMIT 1',[advisor]);if(!member.length)return [];const L=table(period,'lead'),O=table(period,'opp'),C=table(period,'call'),T=table(period,'ticket');const q:any=await namedBatch([{key:'leads',sql:`SELECT (last_modified_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",SUM(CASE WHEN ${TALKED_CONDITION_SQL} THEN 1 ELSE 0 END) talked FROM ${L} WHERE owner=? AND last_modified_date<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]},{key:'opps',sql:`SELECT (created_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) opp FROM ${O} WHERE creator=? AND registration_type='OPP' AND created_date<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]},{key:'calls',sql:`SELECT (start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C} WHERE "user"=? AND start_date<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]},{key:'tickets',sql:`SELECT (closed_at::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) tickets FROM ${T} WHERE owner=? AND closed_at<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]}]);const m:any={};const touch=(d:string)=>m[d]||(m[d]={day:d,talked:0,opp:0,calls:0,t8:0,tickets:0,total:0});for(const r of q.leads||[])touch(r.day).talked=Number(r.talked||0);for(const r of q.opps||[])touch(r.day).opp=Number(r.opp||0);for(const r of q.calls||[]){const x=touch(r.day);x.calls=Number(r.calls||0);x.t8=Number(r.t8||0)}for(const r of q.tickets||[])touch(r.day).tickets=Number(r.tickets||0);return Object.keys(m).sort().map(d=>{const r=m[d];r.total=r.talked+r.opp+r.t8+r.tickets;return r});}
