@@ -64,7 +64,7 @@ export async function ensureCrmActivityTables(){
 export async function startCrmActivityBatch(){
   await ensureCrmActivityTables();
   const batchId=crypto.randomUUID();
-  const cutoff=new Date(Date.now()-24*3600_000).toISOString();
+  const cutoff=new Date(Date.now()-6*3600_000).toISOString();
   await tursoBatch([{sql:`DELETE FROM ${ident(STAGING)} WHERE created_at<?`,args:[cutoff]}]);
   return {batchId,maxChunkRows:300};
 }
