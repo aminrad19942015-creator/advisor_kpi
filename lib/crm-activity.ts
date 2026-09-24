@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { tursoBatch, tursoSelect, tableColumns } from './turso';
+import { tursoBatch, tursoSelect, tableColumns, databaseProvider } from './turso';
 import { assertCrmConnectorToken } from './crm-shadow';
 
 export { assertCrmConnectorToken };
@@ -124,6 +124,66 @@ async function replaceTarget(target:string,rows:any[]){
 }
 
 
+async function replaceDatasetFromStaging(batchId:string,dataset:string,target:string,expectedRows:number){
+  const countRows=await tursoSelect(
+    `SELECT COALESCE(SUM(jsonb_array_length(payload_json::jsonb)),0) AS n
+     FROM ${ident(STAGING)} WHERE batch_id=? AND dataset=?`,
+    [batchId,dataset]
+  );
+  const actual=Number(countRows?.[0]?.n||0);
+  if(actual!==expectedRows){
+    throw new Error(`CRM activity row-count mismatch for ${dataset}: expected ${expectedRows}, received ${actual}.`);
+  }
+
+  const cols=await tursoSelect(
+    "SELECT column_name,data_type FROM information_schema.columns WHERE table_schema='public' AND table_name=? ORDER BY ordinal_position",
+    [target]
+  );
+  if(!cols.length) throw new Error('Target table metadata not found: '+target);
+
+  const stage=`stg_${target}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+  const qs=ident(stage),qt=ident(target);
+  const colNames=cols.map((r:any)=>String(r.column_name));
+  const colSql=colNames.map(ident).join(',');
+  const exprSql=cols.map((r:any)=>{
+    const col=String(r.column_name).replace(/'/g,"''");
+    const type=String(r.data_type||'').toLowerCase();
+    const raw=`NULLIF(j->>'${col}','')`;
+    if(['numeric','decimal','real','double precision'].includes(type)) return `${raw}::numeric`;
+    if(['integer','bigint','smallint'].includes(type)) return `${raw}::bigint`;
+    if(type==='boolean') return `${raw}::boolean`;
+    return raw;
+  }).join(',');
+
+  const teamFilter=dataset==='leads'||dataset==='weekly_leads'||dataset==='monthly_leads'
+    ? " AND EXISTS (SELECT 1 FROM team_members tm WHERE tm.name=NULLIF(j->>'owner',''))"
+    : '';
+
+  try{
+    await tursoBatch([
+      {sql:`DROP TABLE IF EXISTS ${qs}`},
+      {sql:`CREATE TABLE ${qs} AS SELECT * FROM ${qt} WHERE FALSE`},
+      {sql:`
+        INSERT INTO ${qs}(${colSql})
+        SELECT ${exprSql}
+        FROM ${ident(STAGING)} s
+        CROSS JOIN LATERAL jsonb_array_elements(s.payload_json::jsonb) j
+        WHERE s.batch_id=? AND s.dataset=?${teamFilter}
+      `,args:[batchId,dataset]},
+      {sql:'BEGIN IMMEDIATE'},
+      {sql:`DELETE FROM ${qt}`},
+      {sql:`INSERT INTO ${qt}(${colSql}) SELECT ${colSql} FROM ${qs}`},
+      {sql:`DROP TABLE ${qs}`},
+      {sql:'COMMIT'}
+    ]);
+    const finalRows=await tursoSelect(`SELECT COUNT(*) count FROM ${qt}`);
+    return Number(finalRows?.[0]?.count||0);
+  }catch(e){
+    await tursoBatch([{sql:`DROP TABLE IF EXISTS ${qs}`}]).catch(()=>{});
+    throw e;
+  }
+}
+
 async function replaceCallsFromStaging(batchId:string,dataset:string,target:string,expectedRows:number){
   const countRows=await tursoSelect(
     `SELECT COALESCE(SUM(jsonb_array_length(payload_json::jsonb)),0) AS n
@@ -193,11 +253,10 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   await ensureCrmActivityTables();
 
   const requestedKeys=Object.keys(expected||{}).filter(key=>TARGETS[key]);
-  const callKeys=new Set(['calls','weekly_calls','monthly_calls']);
-  if(requestedKeys.length && requestedKeys.every(key=>callKeys.has(key))){
+  if(databaseProvider()==='Supabase' && requestedKeys.length){
     const counts:any={};
     for(const key of requestedKeys){
-      counts[key]=await replaceCallsFromStaging(batchId,key,TARGETS[key],Number(expected?.[key]||0));
+      counts[key]=await replaceDatasetFromStaging(batchId,key,TARGETS[key],Number(expected?.[key]||0));
     }
 
     const now=new Date().toISOString();
