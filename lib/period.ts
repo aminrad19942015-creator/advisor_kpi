@@ -97,7 +97,7 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
   {key:'callSubject',sql:`SELECT COALESCE(NULLIF(subject,''),'بدون مقدار') label,COUNT(*) count FROM ${C}${cw.where} GROUP BY label ORDER BY count DESC`,args:cw.args},
   {key:'leadTicketTopic',sql:`SELECT COALESCE(NULLIF(source_ticket_contact_topic,''),'بدون مقدار') label,COUNT(*) count FROM ${L}${lw.where} GROUP BY label ORDER BY count DESC`,args:lw.args},
   {key:'ticketState',sql:`SELECT COALESCE(NULLIF(status_reason,''),'بدون مقدار') label,COUNT(*) count FROM ${T}${tw.where} GROUP BY label ORDER BY count DESC`,args:tw.args},
-  {key:'ticketSubject',sql:`SELECT COALESCE(NULLIF(contact_topic,''),'بدون مقدار') label,COUNT(*) count FROM ${T}${tw.where} GROUP BY label ORDER BY count DESC`,args:tw.args},
+  {key:'ticketSubject',sql:`SELECT COALESCE(NULLIF(contact_topic,''),NULLIF(main_subject,''),'بدون مقدار') label,COUNT(*) count FROM ${T}${tw.where} GROUP BY label ORDER BY count DESC`,args:tw.args},
   {key:'trendLeads',sql:`SELECT (last_modified_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",SUM(CASE WHEN ${TALKED_CONDITION_SQL} THEN 1 ELSE 0 END) talked FROM ${L}${lw.where} AND last_modified_date<>'' GROUP BY "day"`,args:lw.args},
   {key:'trendOpps',sql:`SELECT (created_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) opp FROM ${O}${ow.where} AND registration_type='OPP' AND created_date<>'' GROUP BY "day"`,args:ow.args},
   {key:'trendCalls',sql:`SELECT (start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C}${cw.where} AND start_date<>'' GROUP BY "day"`,args:cw.args},
@@ -197,7 +197,11 @@ export async function getDimensionDetails(period:string,source:'lead'|'opp'|'cal
  const allowed:any={lead:{lastStatus:'last_status',customerRank:'customer_rank',source:'source',campaign:'campaign',sourceTicketContactTopic:'source_ticket_contact_topic'},opp:{registrationType:'registration_type',status:'status'},call:{subject:'subject'},ticket:{statusReason:'status_reason',contactTopic:'contact_topic'}};
  const col=allowed[source]?.[field];if(!col)throw new Error('فیلد Drill-down نامعتبر است.');
  const w=whereFor(filters||{},source,period);
- return tursoSelect(`SELECT * FROM ${table(period,source)}${w.where} AND COALESCE(${col},'')=? LIMIT 4000`,[...w.args,value==='بدون مقدار'?'':value]);
+ const expected=value==='بدون مقدار'?'':value;
+ if(source==='ticket'&&field==='contactTopic'){
+   return tursoSelect(`SELECT * FROM ${table(period,source)}${w.where} AND COALESCE(NULLIF(contact_topic,''),NULLIF(main_subject,''),'')=? LIMIT 4000`,[...w.args,expected]);
+ }
+ return tursoSelect(`SELECT * FROM ${table(period,source)}${w.where} AND COALESCE(${col},'')=? LIMIT 4000`,[...w.args,expected]);
 }
 export async function getRepeatedCallDetails(period:string,filters:any={}){
  const t=table(period,'call'),w=whereFor(filters||{},'call',period);
