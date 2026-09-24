@@ -34,7 +34,16 @@ function whereFor(filters:any,source:'lead'|'opp'|'call'|'ticket',period?:string
  if(leads.length||teams.length||roles.length){const subArgs:any[]=[];let sub='SELECT name FROM team_members WHERE 1=1';sub+=sqlIn('team_lead',leads,subArgs);sub+=sqlIn('team',teams,subArgs);sub+=sqlIn('role',roles,subArgs);where+=` AND ${person} IN (${sub})`;args.push(...subArgs);}
  return {where,args};
 }
-async function namedBatch(items:Array<TursoStatement&{key:string}>){const rows=await tursoBatch(items.map(({sql,args})=>({sql,args})));return Object.fromEntries(items.map((x,i)=>[x.key,rows[i]]));}
+async function namedBatch(items:Array<TursoStatement&{key:string}>){
+ const laneCount=Math.min(5,Math.max(1,items.length));
+ const lanes:Array<Array<TursoStatement&{key:string}>>=Array.from({length:laneCount},()=>[]);
+ items.forEach((item,i)=>lanes[i%laneCount].push(item));
+ const laneResults=await Promise.all(lanes.map(async lane=>{
+   const rows=await tursoBatch(lane.map(({sql,args})=>({sql,args})));
+   return lane.map((x,i)=>[x.key,rows[i]] as const);
+ }));
+ return Object.fromEntries(laneResults.flat());
+}
 
 export async function getPeriodCampaignOptions(period:string){
  const L=table(period,'lead');
