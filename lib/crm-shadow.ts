@@ -44,7 +44,7 @@ export async function ensureCrmShadowTables(){
 export async function startCrmShadowBatch(){
   await ensureCrmShadowTables();
   const batchId=crypto.randomUUID();
-  const cutoff=new Date(Date.now()-24*3600_000).toISOString();
+  const cutoff=new Date(Date.now()-6*3600_000).toISOString();
   await tursoBatch([{sql:`DELETE FROM ${ident(STAGING_TABLE)} WHERE created_at<?`,args:[cutoff]}]);
   return {batchId,maxChunkRows:400};
 }
@@ -150,7 +150,10 @@ export async function finalizeCrmShadowBatch(batchId:string,expectedRows:number,
     {sql:"INSERT INTO dashboard_meta(key,value) VALUES('crm_shadow_row_count',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",args:[String(actual)]},
     {sql:'COMMIT'}
   ]);
-  await tursoBatch([{sql:`DELETE FROM ${ident(STAGING_TABLE)} WHERE batch_id=?`,args:[batchId]}]);
+  await tursoBatch([
+    {sql:`DELETE FROM ${ident(STAGING_TABLE)} WHERE batch_id=?`,args:[batchId]},
+    {sql:`DELETE FROM ${ident(NEXT_TABLE)}`}
+  ]);
   return {batchId,rows:actual,lastSyncAt:now,sourceCheckedAt:sourceCheckedAt||now,table:SHADOW_TABLE};
 }
 
