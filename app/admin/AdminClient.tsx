@@ -9,19 +9,20 @@ type QaResult={ok:boolean;checkedAt?:string;durationMs?:number;checks?:{key:stri
 type CrmConfig=any;
 
 function CrmConfigPanel({css}:{css:any}){
- const [config,setConfig]=useState<CrmConfig|null>(null),[busy,setBusy]=useState(false),[msg,setMsg]=useState(''),[status,setStatus]=useState<any>(null);
+ const [config,setConfig]=useState<CrmConfig|null>(null),[busy,setBusy]=useState(false),[msg,setMsg]=useState(''),[status,setStatus]=useState<any>(null),[recoveryBusy,setRecoveryBusy]=useState(false);
  useEffect(()=>{(async()=>{try{const [r,s]=await Promise.all([fetch('/api/admin/crm-config',{cache:'no-store'}),fetch('/api/admin/crm-status',{cache:'no-store'})]);const j=await r.json();const sj=await s.json();if(r.ok&&j.ok)setConfig(j.config);else setMsg(j.error||'خطا در دریافت تنظیمات CRM');if(s.ok&&sj.ok)setStatus(sj);}catch(e:any){setMsg(e?.message||String(e));}})()},[]);
  const text=(v:any)=>Array.isArray(v)?v.join('\n'):'';
  const list=(v:string)=>v.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
  const set=(path:string[],value:any)=>setConfig((prev:any)=>{const x=structuredClone(prev||{});let cur=x;for(let i=0;i<path.length-1;i++){cur[path[i]]??={};cur=cur[path[i]];}cur[path[path.length-1]]=value;return x;});
  async function save(){if(!config)return;setBusy(true);setMsg('');try{const r=await fetch('/api/admin/crm-config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({config})});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'خطا در ذخیره');setConfig(j.config);setMsg('تنظیمات CRM ذخیره شد. اجرای بعدی Connector از این تنظیمات استفاده خواهد کرد.');}catch(e:any){setMsg(e?.message||String(e));}finally{setBusy(false);}}
+ async function requestRecovery(){setRecoveryBusy(true);setMsg('');try{const r=await fetch('/api/admin/connector-command',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({command:'restore_local_snapshots'})});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'خطا در ثبت بازیابی');setMsg(j.message||'درخواست بازیابی ثبت شد.');}catch(e:any){setMsg(e?.message||String(e));}finally{setRecoveryBusy(false);}}
  if(!config)return <section style={css.card}><h2>مدیریت CRM</h2><p style={css.muted}>{msg||'در حال دریافت تنظیمات...'}</p></section>;
  const area={...css.input,minHeight:120,resize:'vertical' as const};
  const mini={...css.input,minHeight:0};
  return <section style={css.card}>
   <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'center',flexWrap:'wrap'}}>
    <div><h2 style={{margin:'0 0 6px'}}>مدیریت API و شروط CRM</h2><p style={{...css.muted,margin:0}}>فیلترهای عملیاتی Lead، Opportunity، Calls و Ticket از این بخش قابل تغییرند. رمز CRM و Connector Token عمداً در پنل نمایش داده نمی‌شوند.</p></div>
-   <button type="button" style={css.button} disabled={busy} onClick={save}>{busy?'در حال ذخیره...':'ذخیره تنظیمات CRM'}</button>
+   <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" style={css.button} disabled={recoveryBusy} onClick={requestRecovery}>{recoveryBusy?'در حال ثبت...':'بازیابی از Backup محلی'}</button><button type="button" style={css.button} disabled={busy} onClick={save}>{busy?'در حال ذخیره...':'ذخیره تنظیمات CRM'}</button></div>
   </div>
   {msg&&<p style={{color:msg.includes('ذخیره شد')?'#7ce0d4':'#f0b95a'}}>{msg}</p>}
   {status&&<div style={{...css.grid,marginTop:14}}>
