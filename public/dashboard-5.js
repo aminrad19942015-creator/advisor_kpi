@@ -12,7 +12,22 @@ function detailCell(c,v){
  return String(v);
 }
 function rowsTable(rows){if(!rows||!rows.length)return '<div class="empty">رکوردی وجود ندارد.</div>';const cols=Object.keys(rows[0]);return `<div class="table-wrap activity-detail-wrap"><table class="table"><thead><tr>${cols.map(c=>`<th>${safe(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${safe(detailCell(c,r[c]))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
-function loadActivityDetail(period,type,user){const box=$(`${period}Detail`);box.style.display='block';$(`${period}DetailSub`).textContent='در حال دریافت...';$(`${period}DetailBody`).innerHTML='<div class="empty">در حال دریافت...</div>';google.script.run.withFailureHandler(e=>{$(`${period}DetailBody`).innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>'}).withSuccessHandler(rows=>{$(`${period}DetailSub`).textContent=fa(rows.length)+' رکورد — '+user;$(`${period}DetailBody`).innerHTML=rowsTable(rows);makeTableSortable(box);box.scrollIntoView({behavior:'smooth',block:'start'})}).getActivityDetails(period,type,user)}
+function loadActivityDetail(period,type,user){const box=$(`${period}Detail`);box.style.display='block';$(`${period}DetailSub`).textContent='در حال دریافت...';$(`${period}DetailBody`).innerHTML='<div class="empty">در حال دریافت...</div>';google.script.run.withFailureHandler(e=>{$(`${period}DetailBody`).innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>'}).withSuccessHandler(rows=>{$(`${period}DetailSub`).textContent=fa(rows.length)+' رکورد — '+user;$(`${period}DetailBody`).innerHTML=rowsTable(rows);makeTableSortable(box);box.scrollIntoView({behavior:'smooth',block:'start'})}).getActivityDetails(period,type,user,filterState[period]||{})}
+function loadPeriodKpiDetail(period,type,title){
+ const box=$(`${period}Detail`);
+ box.style.display='block';
+ $(`${period}DetailSub`).textContent='در حال دریافت '+title+'...';
+ $(`${period}DetailBody`).innerHTML='<div class="empty">در حال دریافت...</div>';
+ google.script.run
+  .withFailureHandler(e=>{$(`${period}DetailBody`).innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>'})
+  .withSuccessHandler(rows=>{
+   $(`${period}DetailSub`).textContent=title+' — '+fa(rows.length)+' رکورد';
+   $(`${period}DetailBody`).innerHTML=rowsTable(rows);
+   makeTableSortable(box);
+   box.scrollIntoView({behavior:'smooth',block:'start'});
+  })
+  .getPeriodKpiDetails(period,type,filterState[period]||{});
+}
 function loadLeadStatusKpiDetail(period,type){
  const box=$(`${period}Detail`);
  box.style.display='block';
