@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
 const { loadCrmConfig } = require('./config-client');
+const { writeSnapshot } = require('./local-backup');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
 let CRM_ORIGIN = 'https://mxrm.emofid.com';
@@ -217,6 +218,7 @@ async function pushShadow(rows, sourceCheckedAt) {
     await authenticate(page);
     const crmRows = await fetchOpenLeads(page,String(crmConfig.openLeads?.entity||'leads'));
     const rows = normalize(crmRows);
+    writeSnapshot('open_leads',rows,{source:'crm'});
     const result = await pushShadow(rows, new Date().toISOString());
 
     const status = {
