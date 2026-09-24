@@ -90,7 +90,7 @@ async function fetchPaged(page,label,url){
         credentials:'include',
         headers:{
           Accept:'application/json',
-          Prefer:'odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
+          Prefer:'odata.include-annotations="OData.Community.Display.V1.FormattedValue,Microsoft.Dynamics.CRM.lookuplogicalname"'
         }
       });
       return {status:r.status,text:await r.text()};
@@ -125,10 +125,26 @@ async function getUserDirectory(page){
   return map;
 }
 
+async function getRegardingLeadDirectory(page,rows,label){
+  const ids=[...new Set(rows
+    .filter(r=>String(r['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']||'').toLowerCase()==='lead')
+    .map(r=>String(r._regardingobjectid_value||'').toLowerCase())
+    .filter(Boolean))];
+  const map=new Map();
+  for(let i=0;i<ids.length;i+=35){
+    const part=ids.slice(i,i+35);
+    const filter=part.map(id=>'leadid eq '+id).join(' or ');
+    const leads=await fetchPaged(page,label+' regarding leads '+(Math.floor(i/35)+1),
+      CRM_API_PREFIX+'/leads?$select=leadid,ms_leadnumber&$filter='+encodeURIComponent(filter));
+    for(const lead of leads) map.set(String(lead.leadid||'').toLowerCase(),lead.ms_leadnumber??null);
+  }
+  return map;
+}
+
 async function fetchCalls(page,range,label,userDirectory,callConfig){
   const select=[
     'activityid','subject','_ms_partyuserid_value','_ms_callqueueid_value','scheduledstart','actualstart',
-    '_ms_partycontactid_value','ms_tophonenumber','phonenumber','ms_parameters','ms_callduration','actualdurationminutes'
+    '_ms_partycontactid_value','_regardingobjectid_value','ms_tophonenumber','phonenumber','ms_parameters','ms_callduration','actualdurationminutes'
   ].join(',');
 
   const dateField=String(callConfig?.dateField||'scheduledstart');
@@ -136,6 +152,7 @@ async function fetchCalls(page,range,label,userDirectory,callConfig){
   const filter=`${dateField} ge ${range.start} and ${dateField} lt ${range.end}`;
   const url=CRM_API_PREFIX+'/'+entity+'?$select='+select+'&$filter='+encodeURIComponent(filter);
   const raw=await fetchPaged(page,label,url);
+  const regardingLeadDirectory=await getRegardingLeadDirectory(page,raw,label);
 
   const allowedUnits=new Set((callConfig?.businessUnits||[]).map(normalizeFa));
 
@@ -146,6 +163,9 @@ async function fetchCalls(page,range,label,userDirectory,callConfig){
   }).map(row=>{
     const subject=row.subject??'';
     const leadMatch=String(subject).match(/(?:LEAD|OPP)-\d+/i);
+    const regardingType=String(row['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']||'').toLowerCase();
+    const regardingId=String(row._regardingobjectid_value||'').toLowerCase();
+    const regardingLead=regardingType==='lead'?regardingLeadDirectory.get(regardingId):null;
     const userId=String(row._ms_partyuserid_value||'').toLowerCase();
     const info=userDirectory.get(userId);
 
@@ -162,7 +182,7 @@ async function fetchCalls(page,range,label,userDirectory,callConfig){
       parameters:row.ms_parameters??null,
       duration:cleanNumber(row.actualdurationminutes)??cleanNumber(row.ms_callduration),
       business_unit:info?.businessUnit??null,
-      lead_number:leadMatch?leadMatch[0].toUpperCase():null
+      lead_number:regardingLead||(leadMatch?leadMatch[0].toUpperCase():null)
     };
   });
 }
