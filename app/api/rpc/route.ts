@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMeta, getTeamSummary, getTeamFilterOptions, getOpenFilterOptions, getOpenSummary, getOpenNearDeadlineDetails } from '../../../lib/dashboard';
-import { getFilteredPeriodSummary, getActivityDetails, getDimensionDetails, getRepeatedCallDetails, getAdvisorTrend, getPeriodCampaignOptions, getLeadStatusKpiDetails } from '../../../lib/period';
+import { getFilteredPeriodSummary, getActivityDetails, getPeriodKpiDetails, getDimensionDetails, getRepeatedCallDetails, getAdvisorTrend, getPeriodCampaignOptions, getLeadStatusKpiDetails } from '../../../lib/period';
 import { getDashboardBootstrap } from '../../../lib/bootstrap';
 import { getOpenLeadDetails } from '../../../lib/open-detail';
 
@@ -16,7 +16,8 @@ const handlers:Record<string,(args:any[])=>Promise<any>>={
  getOpenNearDeadlineDetails: async ([leadType,owner,filters])=>getOpenNearDeadlineDetails(leadType,owner||'',filters||{}),
  getFilteredPeriodSummary: async ([period,filters])=>getFilteredPeriodSummary(period,filters||{}),
  getPeriodCampaignOptions: async ([period])=>getPeriodCampaignOptions(period),
- getActivityDetails: async ([period,type,user])=>getActivityDetails(period,type,user),
+ getActivityDetails: async ([period,type,user,filters])=>getActivityDetails(period,type,user,filters||{}),
+ getPeriodKpiDetails: async ([period,type,filters])=>getPeriodKpiDetails(period,type,filters||{}),
  getLeadStatusKpiDetails: async ([period,type,filters])=>getLeadStatusKpiDetails(period,type,filters||{}),
  getDimensionDetails: async ([period,source,field,value])=>getDimensionDetails(period,source,field,value),
  getRepeatedCallDetails: async ([period])=>getRepeatedCallDetails(period),
