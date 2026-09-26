@@ -12,9 +12,6 @@ function cleanMember(input:any){
  for(const f of fields) out[f]=String(input?.[f]??'').trim();
  if(!out.name) throw new Error('نام و نام خانوادگی الزامی است.');
  if(!out.personnel_code) throw new Error('کد پرسنلی الزامی است.');
- // Only advisors and guides belong to a senior lead. Senior advisors report
- // directly to the team lead, so senior_lead must stay empty for them.
- if(!['مشاور','راهنما'].includes(out.role)) out.senior_lead='';
  return out;
 }
 
