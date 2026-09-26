@@ -32,8 +32,8 @@ function whereFor(filters:any,source:'lead'|'opp'|'call'|'ticket',period?:string
    where+=` AND lead_number IN (SELECT lead_number FROM ${leadTable} WHERE campaign IN (${qs}) AND COALESCE(lead_number,'')<>'')`;
   }
  }
- const leads=norm(filters.teamLead),teams=norm(filters.team),roles=norm(filters.role);
- if(leads.length||teams.length||roles.length){const subArgs:any[]=[];let sub='SELECT name FROM team_members WHERE 1=1';sub+=sqlIn('team_lead',leads,subArgs);sub+=sqlIn('team',teams,subArgs);sub+=sqlIn('role',roles,subArgs);where+=` AND ${person} IN (${sub})`;args.push(...subArgs);}
+ const leads=norm(filters.teamLead),seniorLeads=norm(filters.seniorLead),teams=norm(filters.team),roles=norm(filters.role);
+ if(leads.length||seniorLeads.length||teams.length||roles.length){const subArgs:any[]=[];let sub='SELECT name FROM team_members WHERE 1=1';sub+=sqlIn('team_lead',leads,subArgs);sub+=sqlIn('senior_lead',seniorLeads,subArgs);sub+=sqlIn('team',teams,subArgs);sub+=sqlIn('role',roles,subArgs);where+=` AND ${person} IN (${sub})`;args.push(...subArgs);}
  return {where,args};
 }
 async function namedBatch(items:Array<TursoStatement&{key:string}>){
@@ -87,7 +87,7 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
     GROUP BY "user",(start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date
     HAVING COUNT(*)>=5
   ) GROUP BY name`,args:acw.args},
-  {key:'allTeamMembers',sql:'SELECT name,team_lead AS "teamLead",team,role FROM team_members'},
+  {key:'allTeamMembers',sql:'SELECT name,team_lead AS "teamLead",senior_lead AS "seniorLead",team,role FROM team_members'},
   {key:'leadState',sql:`SELECT COALESCE(NULLIF(last_status,''),'بدون مقدار') label,COUNT(*) count FROM ${L}${lw.where} GROUP BY label ORDER BY count DESC`,args:lw.args},
   {key:'rank',sql:`SELECT COALESCE(NULLIF(customer_rank,''),'بدون مقدار') label,COUNT(*) count FROM ${L}${lw.where} GROUP BY label ORDER BY count DESC`,args:lw.args},
   {key:'leadSource',sql:`SELECT COALESCE(NULLIF(source,''),'بدون مقدار') label,COUNT(*) count FROM ${L}${lw.where} GROUP BY label ORDER BY count DESC`,args:lw.args},
