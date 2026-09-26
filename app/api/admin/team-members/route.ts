@@ -5,7 +5,7 @@ import {tursoBatch,tursoSelect} from '../../../../lib/turso';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 
-const fields=['name','personnel_code','email','team_lead','team','gender','role','business_unit'] as const;
+const fields=['name','personnel_code','email','team_lead','senior_lead','team','gender','role','business_unit'] as const;
 
 function cleanMember(input:any){
  const out:any={};
@@ -19,7 +19,7 @@ export async function GET(){
  try{
   if(!await isAdmin()) return NextResponse.json({ok:false,error:'دسترسی غیرمجاز.'},{status:401});
   const members=await tursoSelect(`
-   SELECT name,personnel_code,email,team_lead,team,gender,role,business_unit
+   SELECT name,personnel_code,email,team_lead,senior_lead,team,gender,role,business_unit
    FROM team_members
    ORDER BY name
   `);
@@ -32,8 +32,8 @@ export async function POST(req:NextRequest){
   if(!await isAdmin()) return NextResponse.json({ok:false,error:'دسترسی غیرمجاز.'},{status:401});
   const m=cleanMember(await req.json());
   await tursoBatch([{sql:`
-   INSERT INTO team_members(name,personnel_code,email,team_lead,team,gender,role,business_unit)
-   VALUES(?,?,?,?,?,?,?,?)
+   INSERT INTO team_members(name,personnel_code,email,team_lead,senior_lead,team,gender,role,business_unit)
+   VALUES(?,?,?,?,?,?,?,?,?)
   `,args:fields.map(f=>m[f])}]);
   return NextResponse.json({ok:true});
  }catch(e:any){
@@ -51,7 +51,7 @@ export async function PUT(req:NextRequest){
   const m=cleanMember(body);
   await tursoBatch([{sql:`
    UPDATE team_members
-   SET name=?,personnel_code=?,email=?,team_lead=?,team=?,gender=?,role=?,business_unit=?
+   SET name=?,personnel_code=?,email=?,team_lead=?,senior_lead=?,team=?,gender=?,role=?,business_unit=?
    WHERE personnel_code=?
   `,args:[...fields.map(f=>m[f]),originalCode]}]);
   return NextResponse.json({ok:true});
