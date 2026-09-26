@@ -69,9 +69,9 @@ function syncDropdownMulti(id){
       <button type="button" class="multi-tool none">پاک کردن</button>
     </div>
   ` + [...sel.options].map((o,i)=>`
-    <label class="multi-option">
+    <label class="multi-option" title="${safe(o.textContent)}">
       <input type="checkbox" data-i="${i}" ${o.selected?'checked':''}>
-      <span>${safe(o.textContent)}</span>
+      <span title="${safe(o.textContent)}">${safe(o.textContent)}</span>
     </label>
   `).join('');
 
