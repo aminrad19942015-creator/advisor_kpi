@@ -29,12 +29,18 @@ export async function getTeamSummary(filters:any={}){
 }
 
 export async function getTeamFilterOptions(){
- const [members,...res]=await Promise.all([
+ const [members,teamLead,seniorLead,team,gender,role,businessUnit,advisor]=await Promise.all([
   tursoSelect(`SELECT name,team_lead AS "teamLead",senior_lead AS "seniorLead",team,gender,role,business_unit AS "businessUnit" FROM team_members ORDER BY name`),
-  ...['team_lead','senior_lead','team','gender','role','business_unit','name'].map(c=>tursoSelect(`SELECT DISTINCT ${c} value FROM team_members WHERE COALESCE(${c},'')<>'' ORDER BY value`))
+  tursoSelect("SELECT DISTINCT team_lead value FROM team_members WHERE COALESCE(team_lead,'')<>'' ORDER BY value"),
+  tursoSelect("SELECT name value FROM team_members WHERE role='سرتیم' AND COALESCE(name,'')<>'' ORDER BY name"),
+  tursoSelect("SELECT DISTINCT team value FROM team_members WHERE COALESCE(team,'')<>'' ORDER BY value"),
+  tursoSelect("SELECT DISTINCT gender value FROM team_members WHERE COALESCE(gender,'')<>'' ORDER BY value"),
+  tursoSelect("SELECT DISTINCT role value FROM team_members WHERE COALESCE(role,'')<>'' ORDER BY value"),
+  tursoSelect("SELECT DISTINCT business_unit value FROM team_members WHERE COALESCE(business_unit,'')<>'' ORDER BY value"),
+  tursoSelect("SELECT DISTINCT name value FROM team_members WHERE COALESCE(name,'')<>'' ORDER BY value")
  ]);
  const vals=(x:any[])=>x.map(r=>r.value);
- return {members,teamLead:vals(res[0]),seniorLead:vals(res[1]),team:vals(res[2]),gender:vals(res[3]),role:vals(res[4]),businessUnit:vals(res[5]),advisor:vals(res[6])};
+ return {members,teamLead:vals(teamLead),seniorLead:vals(seniorLead),team:vals(team),gender:vals(gender),role:vals(role),businessUnit:vals(businessUnit),advisor:vals(advisor)};
 }
 
 export async function getOpenFilterOptions(){
