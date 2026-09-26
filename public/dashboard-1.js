@@ -151,7 +151,8 @@ function syncedTeamOptions(current,mapping){
       const selected=Array.isArray(current[otherStateKey])?current[otherStateKey].filter(Boolean):[];
       if(selected.length) rows=rows.filter(r=>selected.includes(r[otherMemberKey]||''));
     }
-    const vals=[...new Set(rows.map(r=>r[memberKey]).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'fa',{numeric:true}));
+    let vals=[...new Set(rows.map(r=>r[memberKey]).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'fa',{numeric:true}));
+    if(stateKey==='seniorLead') vals=[...new Set([...(filterOptions.team?.seniorLead||[]),...vals])].sort((a,b)=>String(a).localeCompare(String(b),'fa',{numeric:true}));
     const selected=Array.isArray(current[stateKey])?current[stateKey].filter(Boolean):[];
     out[stateKey]=[...new Set([...selected,...vals])];
   }
