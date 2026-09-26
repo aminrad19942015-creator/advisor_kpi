@@ -75,10 +75,9 @@ function TeamMembersPanel({css}:{css:any}){
  async function del(i:number){const m=members[i];if(!window.confirm('این نفر از لیست مشاوران حذف شود؟'))return;setBusy('del-'+i);setMsg('');try{const r=await fetch('/api/admin/team-members',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({personnel_code:m._original})});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'خطا در حذف');setMsg('نفر حذف شد.');await load();}catch(e:any){setMsg(e?.message||String(e));}finally{setBusy(null);}}
  const filtered=members.filter(m=>!q||[m.name,m.personnel_code,m.email,m.team_lead,m.senior_lead,m.team,m.role,m.business_unit].some(v=>String(v||'').toLowerCase().includes(q.toLowerCase())));
  const cellInput=(value:string,onChange:(v:string)=>void,placeholder='')=><input style={css.gridInput} value={value||''} placeholder={placeholder} onChange={e=>onChange(e.target.value)}/>;
- const seniorOptions=[...new Set(members.filter((x:any)=>String(x.role||'').trim()==='سرتیم').map((x:any)=>String(x.name||'').trim()).filter(Boolean))].sort((a:any,b:any)=>String(a).localeCompare(String(b),'fa'));
- const seniorSelect=(value:string,onChange:(v:string)=>void,role:string)=><select style={{...css.gridInput,...(!['مشاور','راهنما'].includes(String(role||'').trim())?{opacity:.55,cursor:'not-allowed'}:{})}} value={['مشاور','راهنما'].includes(String(role||'').trim())?(value||''):''} disabled={!['مشاور','راهنما'].includes(String(role||'').trim())} onChange={e=>onChange(e.target.value)}><option value="">{['مشاور','راهنما'].includes(String(role||'').trim())?'بدون سرتیم':'مستقیم با تیم لید'}</option>{seniorOptions.map((n:any)=><option key={n} value={n}>{n}</option>)}</select>;
+ const seniorInput=(value:string,onChange:(v:string)=>void)=><input style={css.gridInput} value={value||''} placeholder="نام سرتیم..." onChange={e=>onChange(e.target.value)}/>;
  return <section style={css.card}>
-  <div style={css.sectionHead}><div><div style={css.eyebrow}>TEAM MASTER DATA</div><h2 style={{margin:'4px 0 6px'}}>مدیریت لیست مشاوران</h2><p style={{...css.muted,margin:0}}>این جدول منبع اصلی ساختار تیم است. «مشاور» و «راهنما» می‌توانند سرتیم داشته باشند؛ «مشاور ارشد» مستقیماً با تیم لید در ارتباط است و ستون سرتیم برای او غیرفعال می‌شود. Excel همچنان به‌عنوان مسیر جایگزین پشتیبانی می‌شود.</p></div><input style={{...css.input,maxWidth:300}} placeholder="جست‌وجو در نفرات..." value={q} onChange={e=>setQ(e.target.value)}/></div>
+  <div style={css.sectionHead}><div><div style={css.eyebrow}>TEAM MASTER DATA</div><h2 style={{margin:'4px 0 6px'}}>مدیریت لیست مشاوران</h2><p style={{...css.muted,margin:0}}>این جدول منبع اصلی ساختار تیم است. ستون «سرتیم» عمداً آزاد و متنی است تا خودت ساختار را تعیین کنی. روابط فیلترها از مقادیر همین جدول و رول‌های ثبت‌شده تشخیص داده می‌شوند و با تغییر رول‌ها نیاز به تغییر کد نیست. Excel همچنان به‌عنوان مسیر جایگزین پشتیبانی می‌شود.</p></div><input style={{...css.input,maxWidth:300}} placeholder="جست‌وجو در نفرات..." value={q} onChange={e=>setQ(e.target.value)}/></div>
   {msg&&<div style={{...css.notice,marginTop:14}}>{msg}</div>}
   <div style={{...css.subCard,marginTop:14}}>
    <div style={css.subTitle}>افزودن نفر جدید</div>
@@ -87,7 +86,7 @@ function TeamMembersPanel({css}:{css:any}){
     {cellInput(draft.personnel_code,v=>setDraft((x:any)=>({...x,personnel_code:v})),'کد پرسنلی')}
     {cellInput(draft.email,v=>setDraft((x:any)=>({...x,email:v})),'ایمیل شرکتی')}
     {cellInput(draft.team_lead,v=>setDraft((x:any)=>({...x,team_lead:v})),'تیم لید')}
-    {seniorSelect(draft.senior_lead,v=>setDraft((x:any)=>({...x,senior_lead:v})),draft.role)}
+    {seniorInput(draft.senior_lead,v=>setDraft((x:any)=>({...x,senior_lead:v}))}
     {cellInput(draft.team,v=>setDraft((x:any)=>({...x,team:v})),'تیم')}
     {cellInput(draft.gender,v=>setDraft((x:any)=>({...x,gender:v})),'جنسیت')}
     {cellInput(draft.role,v=>setDraft((x:any)=>({...x,role:v})),'رده')}
@@ -102,7 +101,7 @@ function TeamMembersPanel({css}:{css:any}){
     <td style={css.cell}>{cellInput(m.personnel_code,v=>setRow(members.indexOf(m),'personnel_code',v))}</td>
     <td style={css.cell}>{cellInput(m.email,v=>setRow(members.indexOf(m),'email',v))}</td>
     <td style={css.cell}>{cellInput(m.team_lead,v=>setRow(members.indexOf(m),'team_lead',v))}</td>
-    <td style={css.cell}>{seniorSelect(m.senior_lead,v=>setRow(members.indexOf(m),'senior_lead',v),m.role)}</td>
+    <td style={css.cell}>{seniorInput(m.senior_lead,v=>setRow(members.indexOf(m),'senior_lead',v))}</td>
     <td style={css.cell}>{cellInput(m.team,v=>setRow(members.indexOf(m),'team',v))}</td>
     <td style={css.cell}>{cellInput(m.gender,v=>setRow(members.indexOf(m),'gender',v))}</td>
     <td style={css.cell}>{cellInput(m.role,v=>setRow(members.indexOf(m),'role',v))}</td>
