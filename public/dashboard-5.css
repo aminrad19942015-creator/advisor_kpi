@@ -3,3 +3,10 @@
 .hover-stage{position:relative}.chart-hit{cursor:crosshair;pointer-events:all}.chart-tooltip{position:absolute;display:none;z-index:50;min-width:195px;background:#0b1830;border:1px solid rgba(63,224,205,.28);border-radius:12px;box-shadow:0 16px 45px rgba(0,0,0,.42);padding:10px 12px;color:#eef3f9;pointer-events:none;font-size:11px}.chart-tooltip .ct-date{font-weight:900;color:#3fe0cd;margin-bottom:7px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.08)}.chart-tooltip .ct-grid{display:grid;grid-template-columns:1fr auto;gap:5px 14px;align-items:center}.chart-tooltip .ct-grid span{color:#9cb0c9}.chart-tooltip .ct-grid b{color:#fff;text-align:left}
 #openPage .lead-filter-row:nth-of-type(2){grid-template-columns:repeat(6,minmax(0,1fr))!important}@media(max-width:1250px){#openPage .lead-filter-row:nth-of-type(2){grid-template-columns:repeat(3,minmax(0,1fr))!important}}@media(max-width:760px){#openPage .lead-filter-row:nth-of-type(2){grid-template-columns:repeat(2,minmax(0,1fr))!important}}@media(max-width:520px){#openPage .lead-filter-row:nth-of-type(2){grid-template-columns:1fr!important}}
 .deadline-kpi{border-color:rgba(240,185,90,.22)!important}.deadline-kpi:hover{border-color:rgba(240,185,90,.55)!important;transform:translateY(-1px)}.deadline-num{min-width:34px;text-align:center}
+
+
+/* Open Leads filters — aligned 2 rows x 6 columns on desktop */
+#openPage .lead-filter-row{grid-template-columns:repeat(6,minmax(0,1fr))!important}
+@media(max-width:1250px){#openPage .lead-filter-row{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+@media(max-width:760px){#openPage .lead-filter-row{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:520px){#openPage .lead-filter-row{grid-template-columns:1fr!important}}
