@@ -32,7 +32,7 @@ export async function getTeamFilterOptions(){
  const [members,teamLead,seniorLead,team,gender,role,businessUnit,advisor]=await Promise.all([
   tursoSelect(`SELECT name,team_lead AS "teamLead",senior_lead AS "seniorLead",team,gender,role,business_unit AS "businessUnit" FROM team_members ORDER BY name`),
   tursoSelect("SELECT DISTINCT team_lead value FROM team_members WHERE COALESCE(team_lead,'')<>'' ORDER BY value"),
-  tursoSelect("SELECT name value FROM team_members WHERE role='سرتیم' AND COALESCE(name,'')<>'' ORDER BY name"),
+  tursoSelect("SELECT value FROM (SELECT name value FROM team_members WHERE role='سرتیم' AND COALESCE(name,'')<>'' UNION SELECT senior_lead value FROM team_members WHERE COALESCE(senior_lead,'')<>'') x ORDER BY value"),
   tursoSelect("SELECT DISTINCT team value FROM team_members WHERE COALESCE(team,'')<>'' ORDER BY value"),
   tursoSelect("SELECT DISTINCT gender value FROM team_members WHERE COALESCE(gender,'')<>'' ORDER BY value"),
   tursoSelect("SELECT DISTINCT role value FROM team_members WHERE COALESCE(role,'')<>'' ORDER BY value"),
