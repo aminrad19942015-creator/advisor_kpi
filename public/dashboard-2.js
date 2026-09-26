@@ -140,6 +140,7 @@ function teamFiltersHtml(){
   return `<div class="filters">
     <div class="field"><label>جست‌وجوی نام</label><input id="tfSearch" value="${safe(f.search||'')}" placeholder="نام و نام خانوادگی..."></div>
     <div class="field"><label>تیم لید</label><select id="tfLead"></select></div>
+    <div class="field"><label>سرتیم</label><select id="tfSenior"></select></div>
     <div class="field"><label>تیم</label><select id="tfTeam"></select></div>
     <div class="field"><label>جنسیت</label><select id="tfGender"></select></div>
     <div class="field"><label>رده</label><select id="tfRole"></select></div>
@@ -152,6 +153,7 @@ function openFiltersHtml(){
   return `<div class="lead-filter-section">
    <div class="lead-filter-row">
     <div class="field"><label>مشاور / مالک</label><select id="ofAdvisor"></select></div>
+    <div class="field"><label>سرتیم</label><select id="ofSenior"></select></div>
     <div class="field"><label>رده</label><select id="ofRole"></select></div>
     <div class="field"><label>تیم</label><select id="ofTeam"></select></div>
     <div class="field"><label>واحد تجاری فرد</label><select id="ofUnit"></select></div>
@@ -177,6 +179,7 @@ function periodFiltersHtml(period){
   return `<div class="filters activity-filters">
     <div class="field"><label>مشاور</label><select id="${period}FAdvisor"></select></div>
     <div class="field"><label>تیم لید</label><select id="${period}FLead"></select></div>
+    <div class="field"><label>سرتیم</label><select id="${period}FSenior"></select></div>
     <div class="field"><label>تیم</label><select id="${period}FTeam"></select></div>
     <div class="field"><label>رده</label><select id="${period}FRole"></select></div>
     <div class="field"><label>کمپین</label><select id="${period}FCampaign"></select></div>
@@ -187,9 +190,10 @@ function bindTeamFilters(){
   const o=filterOptions.team||{},f=filterState.team;
   const s=$('tfSearch');if(s)s.oninput=()=>{filterState.team.search=s.value;debouncedApplyTeam()};
   simpleMulti('tfLead',o.teamLead,f.teamLead,v=>{f.teamLead=v;applyTeamFilters()});
+  simpleMulti('tfSenior',o.seniorLead,f.seniorLead,v=>{f.seniorLead=v;applyTeamFilters()});
   simpleMulti('tfTeam',o.team,f.team,v=>{f.team=v;applyTeamFilters()});
   simpleMulti('tfGender',o.gender,f.gender,v=>{f.gender=v;applyTeamFilters()});
   simpleMulti('tfRole',o.role,f.role,v=>{f.role=v;applyTeamFilters()});
   simpleMulti('tfUnit',o.businessUnit,f.businessUnit,v=>{f.businessUnit=v;applyTeamFilters()});
-  setTimeout(()=>{$('tfClear').onclick=()=>{filterState.team={search:'',teamLead:[],team:[],gender:[],role:[],businessUnit:[]};applyTeamFilters()}},0);
+  setTimeout(()=>{$('tfClear').onclick=()=>{filterState.team={search:'',teamLead:[],seniorLead:[],team:[],gender:[],role:[],businessUnit:[]};applyTeamFilters()}},0);
 }
