@@ -65,7 +65,7 @@ function CrmConfigPanel({css}:{css:any}){
 }
 
 function TeamMembersPanel({css}:{css:any}){
- const empty={name:'',personnel_code:'',email:'',team_lead:'',team:'',gender:'',role:'',business_unit:''};
+ const empty={name:'',personnel_code:'',email:'',team_lead:'',senior_lead:'',team:'',gender:'',role:'',business_unit:''};
  const [members,setMembers]=useState<any[]>([]),[draft,setDraft]=useState<any>(empty),[busy,setBusy]=useState<string|null>(null),[msg,setMsg]=useState(''),[q,setQ]=useState('');
  async function load(){try{const r=await fetch('/api/admin/team-members',{cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'خطا در دریافت لیست مشاوران');setMembers((j.members||[]).map((x:any)=>({...x,_original:x.personnel_code})));}catch(e:any){setMsg(e?.message||String(e));}}
  useEffect(()=>{load()},[]);
@@ -73,8 +73,10 @@ function TeamMembersPanel({css}:{css:any}){
  async function add(){setBusy('new');setMsg('');try{const r=await fetch('/api/admin/team-members',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(draft)});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'خطا در افزودن');setDraft(empty);setMsg('نفر جدید اضافه شد.');await load();}catch(e:any){setMsg(e?.message||String(e));}finally{setBusy(null);}}
  async function save(i:number){const m=members[i];setBusy('save-'+i);setMsg('');try{const r=await fetch('/api/admin/team-members',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({...m,original_personnel_code:m._original})});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'خطا در ذخیره');setMsg('تغییرات ذخیره شد.');await load();}catch(e:any){setMsg(e?.message||String(e));}finally{setBusy(null);}}
  async function del(i:number){const m=members[i];if(!window.confirm('این نفر از لیست مشاوران حذف شود؟'))return;setBusy('del-'+i);setMsg('');try{const r=await fetch('/api/admin/team-members',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({personnel_code:m._original})});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'خطا در حذف');setMsg('نفر حذف شد.');await load();}catch(e:any){setMsg(e?.message||String(e));}finally{setBusy(null);}}
- const filtered=members.filter(m=>!q||[m.name,m.personnel_code,m.email,m.team_lead,m.team,m.role,m.business_unit].some(v=>String(v||'').toLowerCase().includes(q.toLowerCase())));
+ const filtered=members.filter(m=>!q||[m.name,m.personnel_code,m.email,m.team_lead,m.senior_lead,m.team,m.role,m.business_unit].some(v=>String(v||'').toLowerCase().includes(q.toLowerCase())));
  const cellInput=(value:string,onChange:(v:string)=>void,placeholder='')=><input style={css.gridInput} value={value||''} placeholder={placeholder} onChange={e=>onChange(e.target.value)}/>;
+ const seniorOptions=[...new Set(members.filter((x:any)=>String(x.role||'').trim()==='سرتیم').map((x:any)=>String(x.name||'').trim()).filter(Boolean))].sort((a:any,b:any)=>String(a).localeCompare(String(b),'fa'));
+ const seniorSelect=(value:string,onChange:(v:string)=>void)=><select style={css.gridInput} value={value||''} onChange={e=>onChange(e.target.value)}><option value="">بدون سرتیم</option>{seniorOptions.map((n:any)=><option key={n} value={n}>{n}</option>)}</select>;
  return <section style={css.card}>
   <div style={css.sectionHead}><div><div style={css.eyebrow}>TEAM MASTER DATA</div><h2 style={{margin:'4px 0 6px'}}>مدیریت لیست مشاوران</h2><p style={{...css.muted,margin:0}}>این جدول منبع اصلی ساختار تیم است. می‌توانی نفرات را مستقیم اضافه، ویرایش یا حذف کنی. Excel همچنان به‌عنوان مسیر جایگزین پشتیبانی می‌شود.</p></div><input style={{...css.input,maxWidth:300}} placeholder="جست‌وجو در نفرات..." value={q} onChange={e=>setQ(e.target.value)}/></div>
   {msg&&<div style={{...css.notice,marginTop:14}}>{msg}</div>}
@@ -85,6 +87,7 @@ function TeamMembersPanel({css}:{css:any}){
     {cellInput(draft.personnel_code,v=>setDraft((x:any)=>({...x,personnel_code:v})),'کد پرسنلی')}
     {cellInput(draft.email,v=>setDraft((x:any)=>({...x,email:v})),'ایمیل شرکتی')}
     {cellInput(draft.team_lead,v=>setDraft((x:any)=>({...x,team_lead:v})),'تیم لید')}
+    {seniorSelect(draft.senior_lead,v=>setDraft((x:any)=>({...x,senior_lead:v})))}
     {cellInput(draft.team,v=>setDraft((x:any)=>({...x,team:v})),'تیم')}
     {cellInput(draft.gender,v=>setDraft((x:any)=>({...x,gender:v})),'جنسیت')}
     {cellInput(draft.role,v=>setDraft((x:any)=>({...x,role:v})),'رده')}
@@ -93,12 +96,13 @@ function TeamMembersPanel({css}:{css:any}){
    </div>
   </div>
   <div style={{overflowX:'auto',marginTop:14}}>
-   <table style={{...css.table,minWidth:1180}}><thead><tr><th style={css.cell}>نام و نام خانوادگی</th><th style={css.cell}>کد پرسنلی</th><th style={css.cell}>ایمیل شرکتی</th><th style={css.cell}>تیم لید</th><th style={css.cell}>تیم</th><th style={css.cell}>جنسیت</th><th style={css.cell}>رده</th><th style={css.cell}>واحد تجاری</th><th style={css.cell}>عملیات</th></tr></thead><tbody>
+   <table style={{...css.table,minWidth:1320}}><thead><tr><th style={css.cell}>نام و نام خانوادگی</th><th style={css.cell}>کد پرسنلی</th><th style={css.cell}>ایمیل شرکتی</th><th style={css.cell}>تیم لید</th><th style={css.cell}>سرتیم</th><th style={css.cell}>تیم</th><th style={css.cell}>جنسیت</th><th style={css.cell}>رده</th><th style={css.cell}>واحد تجاری</th><th style={css.cell}>عملیات</th></tr></thead><tbody>
    {filtered.map((m:any,i:number)=><tr key={m._original||i}>
     <td style={css.cell}>{cellInput(m.name,v=>setRow(members.indexOf(m),'name',v))}</td>
     <td style={css.cell}>{cellInput(m.personnel_code,v=>setRow(members.indexOf(m),'personnel_code',v))}</td>
     <td style={css.cell}>{cellInput(m.email,v=>setRow(members.indexOf(m),'email',v))}</td>
     <td style={css.cell}>{cellInput(m.team_lead,v=>setRow(members.indexOf(m),'team_lead',v))}</td>
+    <td style={css.cell}>{seniorSelect(m.senior_lead,v=>setRow(members.indexOf(m),'senior_lead',v))}</td>
     <td style={css.cell}>{cellInput(m.team,v=>setRow(members.indexOf(m),'team',v))}</td>
     <td style={css.cell}>{cellInput(m.gender,v=>setRow(members.indexOf(m),'gender',v))}</td>
     <td style={css.cell}>{cellInput(m.role,v=>setRow(members.indexOf(m),'role',v))}</td>
