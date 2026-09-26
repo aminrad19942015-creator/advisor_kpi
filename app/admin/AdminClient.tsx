@@ -101,7 +101,7 @@ function TeamMembersPanel({css}:{css:any}){
     <td style={css.cell}>{cellInput(m.personnel_code,v=>setRow(members.indexOf(m),'personnel_code',v))}</td>
     <td style={css.cell}>{cellInput(m.email,v=>setRow(members.indexOf(m),'email',v))}</td>
     <td style={css.cell}>{cellInput(m.team_lead,v=>setRow(members.indexOf(m),'team_lead',v))}</td>
-    <td style={css.cell}>{seniorInput(m.senior_lead,v=>setRow(members.indexOf(m),'senior_lead',v))}</td>
+    <td style={css.cell}>{seniorInput(m.senior_lead,v=>setRow(members.indexOf(m),'senior_lead',v)))}</td>
     <td style={css.cell}>{cellInput(m.team,v=>setRow(members.indexOf(m),'team',v))}</td>
     <td style={css.cell}>{cellInput(m.gender,v=>setRow(members.indexOf(m),'gender',v))}</td>
     <td style={css.cell}>{cellInput(m.role,v=>setRow(members.indexOf(m),'role',v))}</td>
