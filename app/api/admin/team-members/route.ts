@@ -46,18 +46,23 @@ export async function PUT(req:NextRequest){
  try{
   if(!await isAdmin()) return NextResponse.json({ok:false,error:'دسترسی غیرمجاز.'},{status:401});
   const body=await req.json();
-  const originalCode=String(body?.original_personnel_code||'').trim();
-  if(!originalCode) throw new Error('کد پرسنلی رکورد اصلی مشخص نیست.');
-  const m=cleanMember(body);
-  await tursoBatch([{sql:`
-   UPDATE team_members
-   SET name=?,personnel_code=?,email=?,team_lead=?,senior_lead=?,team=?,gender=?,role=?,business_unit=?
-   WHERE personnel_code=?
-  `,args:[...fields.map(f=>m[f]),originalCode]}]);
-  return NextResponse.json({ok:true});
+  const rows=Array.isArray(body?.members)?body.members:[body];
+  if(!rows.length) return NextResponse.json({ok:true,updated:0});
+  const statements=rows.map((row:any)=>{
+   const originalCode=String(row?.original_personnel_code||'').trim();
+   if(!originalCode) throw new Error('کد پرسنلی رکورد اصلی مشخص نیست.');
+   const m=cleanMember(row);
+   return {sql:`
+    UPDATE team_members
+    SET name=?,personnel_code=?,email=?,team_lead=?,senior_lead=?,team=?,gender=?,role=?,business_unit=?
+    WHERE personnel_code=?
+   `,args:[...fields.map(f=>m[f]),originalCode]};
+  });
+  await tursoBatch(statements);
+  return NextResponse.json({ok:true,updated:rows.length});
  }catch(e:any){
   const msg=String(e?.message||e);
-  return NextResponse.json({ok:false,error:msg.includes('unique')?'این کد پرسنلی قبلاً ثبت شده است.':msg},{status:400});
+  return NextResponse.json({ok:false,error:msg.includes('unique')?'حداقل یکی از کدهای پرسنلی تکراری است.':msg},{status:400});
  }
 }
 
