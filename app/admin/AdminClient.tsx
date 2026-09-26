@@ -86,7 +86,7 @@ function TeamMembersPanel({css}:{css:any}){
     {cellInput(draft.personnel_code,v=>setDraft((x:any)=>({...x,personnel_code:v})),'کد پرسنلی')}
     {cellInput(draft.email,v=>setDraft((x:any)=>({...x,email:v})),'ایمیل شرکتی')}
     {cellInput(draft.team_lead,v=>setDraft((x:any)=>({...x,team_lead:v})),'تیم لید')}
-    {seniorInput(draft.senior_lead,v=>setDraft((x:any)=>({...x,senior_lead:v}))}
+    {seniorInput(draft.senior_lead,v=>setDraft((x:any)=>({...x,senior_lead:v})))}
     {cellInput(draft.team,v=>setDraft((x:any)=>({...x,team:v})),'تیم')}
     {cellInput(draft.gender,v=>setDraft((x:any)=>({...x,gender:v})),'جنسیت')}
     {cellInput(draft.role,v=>setDraft((x:any)=>({...x,role:v})),'رده')}
