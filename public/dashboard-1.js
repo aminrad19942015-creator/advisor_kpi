@@ -132,11 +132,11 @@ function bindTrendChartHover(root=document){
 }
 
 const filterState={
-  team:{search:'',teamLead:[],team:[],gender:[],role:[],businessUnit:[]},
-  open:{advisor:[],role:[],team:[],personUnit:[],age:'',leadType:['حقیقی'],nextCallReason:[],customerRank:[],campaign:['Ayar','LeadAdvice'],source:[],lastStatus:[]},
-  daily:{advisor:[],teamLead:[],team:[],role:[],campaign:[]},
-  weekly:{advisor:[],teamLead:[],team:[],role:[],campaign:[]},
-  monthly:{advisor:[],teamLead:[],team:[],role:[],campaign:[]}
+  team:{search:'',teamLead:[],seniorLead:[],team:[],gender:[],role:[],businessUnit:[]},
+  open:{advisor:[],seniorLead:[],role:[],team:[],personUnit:[],age:'',leadType:['حقیقی'],nextCallReason:[],customerRank:[],campaign:['Ayar','LeadAdvice'],source:[],lastStatus:[]},
+  daily:{advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]},
+  weekly:{advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]},
+  monthly:{advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]}
 };
 let filterOptions={team:{},open:{},periodCampaign:{daily:[],weekly:[],monthly:[]}};
 
@@ -161,11 +161,11 @@ function syncedTeamOptions(current,mapping){
 // Default state is intentionally empty = "همه".
 // No filter should be selected automatically on first load.
 function resetAllFilterState(){
-  filterState.team={search:'',teamLead:[],team:[],gender:[],role:[],businessUnit:[]};
-  filterState.open={advisor:[],role:[],team:[],personUnit:[],age:'',leadType:['حقیقی'],nextCallReason:[],customerRank:[],campaign:['Ayar','LeadAdvice'],source:[],lastStatus:[]};
-  filterState.daily={advisor:[],teamLead:[],team:[],role:[],campaign:[]};
-  filterState.weekly={advisor:[],teamLead:[],team:[],role:[],campaign:[]};
-  filterState.monthly={advisor:[],teamLead:[],team:[],role:[],campaign:[]};
+  filterState.team={search:'',teamLead:[],seniorLead:[],team:[],gender:[],role:[],businessUnit:[]};
+  filterState.open={advisor:[],seniorLead:[],role:[],team:[],personUnit:[],age:'',leadType:['حقیقی'],nextCallReason:[],customerRank:[],campaign:['Ayar','LeadAdvice'],source:[],lastStatus:[]};
+  filterState.daily={advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]};
+  filterState.weekly={advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]};
+  filterState.monthly={advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]};
 }
 resetAllFilterState();
 
