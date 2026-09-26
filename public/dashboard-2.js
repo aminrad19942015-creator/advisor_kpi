@@ -1,5 +1,19 @@
 function selectedValues(el){return [...el.options].filter(o=>o.selected).map(o=>o.value).filter(Boolean)}
 
+function commitMulti(box){
+  if(!box || !box._dirty) return;
+  box._dirty=false;
+  const sel=$(box.dataset.for);
+  if(sel && box._changeHandler) box._changeHandler(selectedValues(sel));
+}
+
+function closeMulti(box){
+  if(!box) return;
+  const wasOpen=box.classList.contains('open');
+  box.classList.remove('open');
+  if(wasOpen) commitMulti(box);
+}
+
 function ensureDropdownMulti(id,onchange){
   const sel=$(id);
   if(!sel || sel.dataset.multiReady==='1') return;
@@ -26,15 +40,18 @@ function ensureDropdownMulti(id,onchange){
   btn.onclick=e=>{
     e.stopPropagation();
 
+    const isOpen=box.classList.contains('open');
     document.querySelectorAll('.multi.open').forEach(x=>{
-      if(x!==box) x.classList.remove('open');
+      if(x!==box) closeMulti(x);
     });
 
-    box.classList.toggle('open');
+    if(isOpen) closeMulti(box);
+    else box.classList.add('open');
   };
 
   box.querySelector('.multi-menu').onclick=e=>e.stopPropagation();
   box._changeHandler=onchange;
+  box._dirty=false;
 }
 
 function syncDropdownMulti(id){
@@ -61,21 +78,23 @@ function syncDropdownMulti(id){
   menu.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
     cb.onchange=()=>{
       sel.options[Number(cb.dataset.i)].selected=cb.checked;
+      box._dirty=true;
       updateDropdownLabel(id);
-      if(box._changeHandler) box._changeHandler(selectedValues(sel));
     };
   });
 
   menu.querySelector('.all').onclick=()=>{
     [...sel.options].forEach(o=>o.selected=true);
+    box._dirty=true;
     syncDropdownMulti(id);
-    if(box._changeHandler) box._changeHandler(selectedValues(sel));
+    box.classList.add('open');
   };
 
   menu.querySelector('.none').onclick=()=>{
     [...sel.options].forEach(o=>o.selected=false);
+    box._dirty=true;
     syncDropdownMulti(id);
-    if(box._changeHandler) box._changeHandler([]);
+    box.classList.add('open');
   };
 
   updateDropdownLabel(id);
@@ -130,7 +149,7 @@ function simpleMulti(id,vals,selected,onchange){
 }
 
 document.addEventListener('click',()=>{
-  document.querySelectorAll('.multi.open').forEach(x=>x.classList.remove('open'));
+  document.querySelectorAll('.multi.open').forEach(x=>closeMulti(x));
 });
 function setPageLoading(pageId,on){
   const el=$(pageId);if(el)el.classList.toggle('filter-loading',on);
