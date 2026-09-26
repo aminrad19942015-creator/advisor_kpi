@@ -66,18 +66,44 @@ function CrmConfigPanel({css}:{css:any}){
 
 function TeamMembersPanel({css}:{css:any}){
  const empty={name:'',personnel_code:'',email:'',team_lead:'',senior_lead:'',team:'',gender:'',role:'',business_unit:''};
- const [members,setMembers]=useState<any[]>([]),[draft,setDraft]=useState<any>(empty),[busy,setBusy]=useState<string|null>(null),[msg,setMsg]=useState(''),[q,setQ]=useState('');
- async function load(){try{const r=await fetch('/api/admin/team-members',{cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'خطا در دریافت لیست مشاوران');setMembers((j.members||[]).map((x:any)=>({...x,_original:x.personnel_code})));}catch(e:any){setMsg(e?.message||String(e));}}
+ const [members,setMembers]=useState<any[]>([]),[draft,setDraft]=useState<any>(empty),[busy,setBusy]=useState<string|null>(null),[msg,setMsg]=useState(''),[q,setQ]=useState(''),[sort,setSort]=useState<{key:string,dir:'asc'|'desc'}>({key:'name',dir:'asc'});
+ async function load(){try{const r=await fetch('/api/admin/team-members',{cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'خطا در دریافت لیست مشاوران');setMembers((j.members||[]).map((x:any)=>({...x,_original:x.personnel_code,_dirty:false})));}catch(e:any){setMsg(e?.message||String(e));}}
  useEffect(()=>{load()},[]);
- const setRow=(i:number,key:string,value:string)=>setMembers(prev=>prev.map((x,ix)=>ix===i?{...x,[key]:value}:x));
+ const setRow=(i:number,key:string,value:string)=>setMembers(prev=>prev.map((x,ix)=>ix===i?{...x,[key]:value,_dirty:true}:x));
  async function add(){setBusy('new');setMsg('');try{const r=await fetch('/api/admin/team-members',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(draft)});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'خطا در افزودن');setDraft(empty);setMsg('نفر جدید اضافه شد.');await load();}catch(e:any){setMsg(e?.message||String(e));}finally{setBusy(null);}}
- async function save(i:number){const m=members[i];setBusy('save-'+i);setMsg('');try{const r=await fetch('/api/admin/team-members',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({...m,original_personnel_code:m._original})});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'خطا در ذخیره');setMsg('تغییرات ذخیره شد.');await load();}catch(e:any){setMsg(e?.message||String(e));}finally{setBusy(null);}}
+ async function saveAll(){
+  const changed=members.filter((m:any)=>m._dirty);
+  if(!changed.length){setMsg('تغییری برای ذخیره وجود ندارد.');return;}
+  setBusy('save-all');setMsg('');
+  try{
+   const payload=changed.map((m:any)=>({...m,original_personnel_code:m._original}));
+   const r=await fetch('/api/admin/team-members',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({members:payload})});
+   const j=await r.json();
+   if(!r.ok||!j.ok)throw new Error(j.error||'خطا در ذخیره');
+   setMsg(`${j.updated||changed.length} ردیف با موفقیت ذخیره شد.`);
+   await load();
+  }catch(e:any){setMsg(e?.message||String(e));}finally{setBusy(null);}
+ }
  async function del(i:number){const m=members[i];if(!window.confirm('این نفر از لیست مشاوران حذف شود؟'))return;setBusy('del-'+i);setMsg('');try{const r=await fetch('/api/admin/team-members',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({personnel_code:m._original})});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'خطا در حذف');setMsg('نفر حذف شد.');await load();}catch(e:any){setMsg(e?.message||String(e));}finally{setBusy(null);}}
- const filtered=members.filter(m=>!q||[m.name,m.personnel_code,m.email,m.team_lead,m.senior_lead,m.team,m.role,m.business_unit].some(v=>String(v||'').toLowerCase().includes(q.toLowerCase())));
+ const filtered=members.filter(m=>!q||[m.name,m.personnel_code,m.email,m.team_lead,m.senior_lead,m.team,m.gender,m.role,m.business_unit].some(v=>String(v||'').toLowerCase().includes(q.toLowerCase())));
+ const sorted=[...filtered].sort((a,b)=>{
+  const av=String(a?.[sort.key]??'').trim(),bv=String(b?.[sort.key]??'').trim();
+  const cmp=av.localeCompare(bv,'fa',{numeric:true,sensitivity:'base'});
+  return sort.dir==='asc'?cmp:-cmp;
+ });
+ const toggleSort=(key:string)=>setSort(s=>s.key===key?{key,dir:s.dir==='asc'?'desc':'asc'}:{key,dir:'asc'});
+ const sortHead=(label:string,key:string)=><button type="button" onClick={()=>toggleSort(key)} style={{display:'inline-flex',alignItems:'center',gap:5,background:'transparent',border:0,color:'inherit',font:'inherit',fontWeight:800,cursor:'pointer',padding:0}}>{label}<span style={{fontSize:11,opacity:sort.key===key?1:.35}}>{sort.key===key?(sort.dir==='asc'?'▲':'▼'):'↕'}</span></button>;
  const cellInput=(value:string,onChange:(v:string)=>void,placeholder='')=><input style={css.gridInput} value={value||''} placeholder={placeholder} onChange={e=>onChange(e.target.value)}/>;
  const seniorInput=(value:string,onChange:(v:string)=>void)=><input style={css.gridInput} value={value||''} placeholder="نام سرتیم..." onChange={e=>onChange(e.target.value)}/>;
+ const dirtyCount=members.filter((m:any)=>m._dirty).length;
  return <section style={css.card}>
-  <div style={css.sectionHead}><div><div style={css.eyebrow}>TEAM MASTER DATA</div><h2 style={{margin:'4px 0 6px'}}>مدیریت لیست مشاوران</h2><p style={{...css.muted,margin:0}}>این جدول منبع اصلی ساختار تیم است. ستون «سرتیم» عمداً آزاد و متنی است تا خودت ساختار را تعیین کنی. روابط فیلترها از مقادیر همین جدول و رول‌های ثبت‌شده تشخیص داده می‌شوند و با تغییر رول‌ها نیاز به تغییر کد نیست. Excel همچنان به‌عنوان مسیر جایگزین پشتیبانی می‌شود.</p></div><input style={{...css.input,maxWidth:300}} placeholder="جست‌وجو در نفرات..." value={q} onChange={e=>setQ(e.target.value)}/></div>
+  <div style={css.sectionHead}>
+   <div><div style={css.eyebrow}>TEAM MASTER DATA</div><h2 style={{margin:'4px 0 6px'}}>مدیریت لیست مشاوران</h2><p style={{...css.muted,margin:0}}>تغییرات جدول را می‌توانی روی چند ردیف انجام بدهی و در پایان یک‌جا ذخیره کنی. ستون «سرتیم» متنی و آزاد است و Excel همچنان به‌عنوان مسیر جایگزین پشتیبانی می‌شود.</p></div>
+   <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+    <input style={{...css.input,maxWidth:300}} placeholder="جست‌وجو در نفرات..." value={q} onChange={e=>setQ(e.target.value)}/>
+    <button type="button" style={{...css.button,minWidth:145}} disabled={busy!==null||dirtyCount===0} onClick={saveAll}>{busy==='save-all'?'در حال ذخیره...':`ذخیره همه تغییرات${dirtyCount?` (${dirtyCount})`:''}`}</button>
+   </div>
+  </div>
   {msg&&<div style={{...css.notice,marginTop:14}}>{msg}</div>}
   <div style={{...css.subCard,marginTop:14}}>
    <div style={css.subTitle}>افزودن نفر جدید</div>
@@ -91,29 +117,42 @@ function TeamMembersPanel({css}:{css:any}){
     {cellInput(draft.gender,v=>setDraft((x:any)=>({...x,gender:v})),'جنسیت')}
     {cellInput(draft.role,v=>setDraft((x:any)=>({...x,role:v})),'رده')}
     {cellInput(draft.business_unit,v=>setDraft((x:any)=>({...x,business_unit:v})),'واحد تجاری')}
-    <button type="button" style={css.button} disabled={busy==='new'} onClick={add}>{busy==='new'?'در حال افزودن...':'＋ افزودن نفر'}</button>
+    <button type="button" style={css.button} disabled={busy!==null} onClick={add}>{busy==='new'?'در حال افزودن...':'＋ افزودن نفر'}</button>
    </div>
   </div>
   <div style={{overflowX:'auto',marginTop:14}}>
-   <table style={{...css.table,minWidth:1320}}><thead><tr><th style={css.cell}>نام و نام خانوادگی</th><th style={css.cell}>کد پرسنلی</th><th style={css.cell}>ایمیل شرکتی</th><th style={css.cell}>تیم لید</th><th style={css.cell}>سرتیم</th><th style={css.cell}>تیم</th><th style={css.cell}>جنسیت</th><th style={css.cell}>رده</th><th style={css.cell}>واحد تجاری</th><th style={css.cell}>عملیات</th></tr></thead><tbody>
-   {filtered.map((m:any,i:number)=><tr key={m._original||i}>
-    <td style={css.cell}>{cellInput(m.name,v=>setRow(members.indexOf(m),'name',v))}</td>
-    <td style={css.cell}>{cellInput(m.personnel_code,v=>setRow(members.indexOf(m),'personnel_code',v))}</td>
-    <td style={css.cell}>{cellInput(m.email,v=>setRow(members.indexOf(m),'email',v))}</td>
-    <td style={css.cell}>{cellInput(m.team_lead,v=>setRow(members.indexOf(m),'team_lead',v))}</td>
-    <td style={css.cell}>{seniorInput(m.senior_lead,v=>setRow(members.indexOf(m),'senior_lead',v))}</td>
-    <td style={css.cell}>{cellInput(m.team,v=>setRow(members.indexOf(m),'team',v))}</td>
-    <td style={css.cell}>{cellInput(m.gender,v=>setRow(members.indexOf(m),'gender',v))}</td>
-    <td style={css.cell}>{cellInput(m.role,v=>setRow(members.indexOf(m),'role',v))}</td>
-    <td style={css.cell}>{cellInput(m.business_unit,v=>setRow(members.indexOf(m),'business_unit',v))}</td>
-    <td style={css.cell}><div style={{display:'flex',gap:6}}><button type="button" style={{...css.smallButton,background:'#27c7b8',color:'#06283a'}} disabled={busy!==null} onClick={()=>save(members.indexOf(m))}>ذخیره</button><button type="button" style={{...css.smallButton,background:'#7e3145',color:'#fff'}} disabled={busy!==null} onClick={()=>del(members.indexOf(m))}>حذف</button></div></td>
-   </tr>)}
+   <table style={{...css.table,minWidth:1320}}><thead><tr>
+    <th style={css.cell}>{sortHead('نام و نام خانوادگی','name')}</th>
+    <th style={css.cell}>{sortHead('کد پرسنلی','personnel_code')}</th>
+    <th style={css.cell}>{sortHead('ایمیل شرکتی','email')}</th>
+    <th style={css.cell}>{sortHead('تیم لید','team_lead')}</th>
+    <th style={css.cell}>{sortHead('سرتیم','senior_lead')}</th>
+    <th style={css.cell}>{sortHead('تیم','team')}</th>
+    <th style={css.cell}>{sortHead('جنسیت','gender')}</th>
+    <th style={css.cell}>{sortHead('رده','role')}</th>
+    <th style={css.cell}>{sortHead('واحد تجاری','business_unit')}</th>
+    <th style={css.cell}>عملیات</th>
+   </tr></thead><tbody>
+   {sorted.map((m:any,i:number)=>{
+    const idx=members.indexOf(m);
+    return <tr key={m._original||i} style={m._dirty?{background:'rgba(39,199,184,.055)'}:{}}>
+     <td style={css.cell}>{cellInput(m.name,v=>setRow(idx,'name',v))}</td>
+     <td style={css.cell}>{cellInput(m.personnel_code,v=>setRow(idx,'personnel_code',v))}</td>
+     <td style={css.cell}>{cellInput(m.email,v=>setRow(idx,'email',v))}</td>
+     <td style={css.cell}>{cellInput(m.team_lead,v=>setRow(idx,'team_lead',v))}</td>
+     <td style={css.cell}>{seniorInput(m.senior_lead,v=>setRow(idx,'senior_lead',v))}</td>
+     <td style={css.cell}>{cellInput(m.team,v=>setRow(idx,'team',v))}</td>
+     <td style={css.cell}>{cellInput(m.gender,v=>setRow(idx,'gender',v))}</td>
+     <td style={css.cell}>{cellInput(m.role,v=>setRow(idx,'role',v))}</td>
+     <td style={css.cell}>{cellInput(m.business_unit,v=>setRow(idx,'business_unit',v))}</td>
+     <td style={css.cell}><button type="button" style={{...css.smallButton,background:'#7e3145',color:'#fff'}} disabled={busy!==null} onClick={()=>del(idx)}>حذف</button></td>
+    </tr>
+   })}
    </tbody></table>
   </div>
-  <div style={{...css.muted,marginTop:10}}>{filtered.length} نفر نمایش داده می‌شود؛ کل اعضا: {members.length}</div>
+  <div style={{...css.muted,marginTop:10,display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}><span>{sorted.length} نفر نمایش داده می‌شود؛ کل اعضا: {members.length}</span><span>{dirtyCount?dirtyCount+' ردیف ذخیره‌نشده':'همه تغییرات ذخیره شده‌اند'}</span></div>
  </section>;
 }
-
 export default function AdminClient({authenticated,lastSyncAt='',dataVersion=''}:Props){
  const [authed,setAuthed]=useState(authenticated),[password,setPassword]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[files,setFiles]=useState<FileList|null>(null),[reports,setReports]=useState<Report[]>([]),[progress,setProgress]=useState(''),[rowBusy,setRowBusy]=useState<number|null>(null),[recovering,setRecovering]=useState(false),[history,setHistory]=useState<HistoryRow[]>([]),[qa,setQa]=useState<QaResult|null>(null),[qaBusy,setQaBusy]=useState(false),[guideOpen,setGuideOpen]=useState(false),[guideTab,setGuideTab]=useState<'crm'|'excel'|'backup'>('crm');
  useEffect(()=>{if(!authed)return;loadHistory();if(reports.length)return;let cancelled=false;(async()=>{setRecovering(true);try{const r=await fetch('/api/admin/upload/staged',{cache:'no-store'});const j=await r.json();if(cancelled||!r.ok||!j.ok)return;const recovered:Report[]=(j.results||[]).map((x:any)=>({file:x.file||'',ok:x.preflightOk!==false,rows:x.rows,currentRows:x.currentRows,newRows:x.newRows,change:x.change,changePct:x.changePct,target:x.target,dataset:x.dataset,error:x.error,status:x.preflightOk===false?'Preflight رد شد':'Staging بازیابی شد',warnings:x.warnings||[],preflightOk:x.preflightOk,uploadId:x.uploadId}));if(recovered.length){setReports(recovered);setMessage(`${recovered.length} فایل از Staging قبلی بازیابی شد؛ برای Replace نیازی به Upload یا Preflight مجدد نیست.`);}}catch{}finally{if(!cancelled)setRecovering(false);}})();return()=>{cancelled=true};},[authed]);
