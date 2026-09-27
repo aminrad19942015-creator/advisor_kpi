@@ -25,7 +25,7 @@ export async function getTeamSummary(filters:any={}){
  where+=sqlIn('business_unit',norm(filters.businessUnit),args);
  const [rows]=await tursoBatch([{sql:`SELECT name,personnel_code AS "personnelCode",email,team_lead AS "teamLead",senior_lead AS "seniorLead",team,gender,role,business_unit AS "businessUnit" FROM team_members ${where} ORDER BY name`,args}]);
  const countPairs=(field:string)=>{const m:any={};for(const r of rows){const k=r[field]||'بدون مقدار';m[k]=(m[k]||0)+1}return Object.keys(m).map(k=>[k,m[k]]).sort((a:any,b:any)=>b[1]-a[1])};
- return {rows,kpis:{total:rows.length,teamLeads:rows.filter((x:any)=>x.role==='تیم لید').length,teams:new Set(rows.map((x:any)=>x.team).filter(Boolean)).size,advisors:rows.filter((x:any)=>String(x.role||'').includes('مشاور')||String(x.role||'').includes('راهنما')).length,women:rows.filter((x:any)=>x.gender==='خانم').length},roleCounts:countPairs('role'),unitCounts:countPairs('businessUnit')};
+ return {rows,kpis:{total:rows.length,teamLeads:rows.filter((x:any)=>x.role==='تیم لید').length,teams:new Set(rows.map((x:any)=>x.team).filter(Boolean)).size,advisors:rows.filter((x:any)=>String(x.role||'').includes('مشاور')||String(x.role||'').includes('راهنما')).length,women:rows.filter((x:any)=>x.gender==='خانم').length,men:rows.filter((x:any)=>x.gender==='آقا').length},roleCounts:countPairs('role'),unitCounts:countPairs('businessUnit')};
 }
 
 export async function getTeamFilterOptions(){
