@@ -89,7 +89,7 @@ function renderTeam(){
     <div class="kpis">
       <div class="kpi"><div class="kpi-label">کل افراد</div><div class="kpi-value">${fa(k.total)}</div></div>
       <div class="kpi"><div class="kpi-label">تیم لید</div><div class="kpi-value">${fa(k.teamLeads)}</div></div>
-      <div class="kpi"><div class="kpi-label">تعداد تیم</div><div class="kpi-value">${fa(k.teams)}</div></div>
+      <div class="kpi"><div class="kpi-label">تعداد سرتیم</div><div class="kpi-value">${fa(k.seniorLeads)}</div></div>
       <div class="kpi"><div class="kpi-label">خانم‌ها</div><div class="kpi-value">${fa(k.women)}</div></div>
       <div class="kpi"><div class="kpi-label">آقایان</div><div class="kpi-value">${fa(k.men)}</div></div>
     </div>
