@@ -15,7 +15,7 @@ const connectorToken=process.env.CRM_CONNECTOR_TOKEN;
 if(!username||!password||!connectorToken){console.error('Missing connector credentials/config in .env.local');process.exit(1);}
 
 const runtimeDir=path.join(__dirname,'runtime');
-const profileDir=path.join(runtimeDir,'browser-profile');
+const profileDir = path.join(runtimeDir, 'browser-profile-activity');
 fs.mkdirSync(runtimeDir,{recursive:true});
 
 function formatted(row,field){return row[field+'@OData.Community.Display.V1.FormattedValue']??row[field]??null;}
