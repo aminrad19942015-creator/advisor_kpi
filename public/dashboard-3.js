@@ -84,16 +84,16 @@ function renderTeam(){
   const s=state.data.team||{},k=s.kpis||{};
   $('teamPage').innerHTML=`
     ${reportBadge('وضعیت داده',fa(k.total)+' نفر')}
-    <div class="topbar"><div class="title"><h2>نمای کلی واحد مشاورین</h2><p>ساختار افراد، تیم‌ها و واحدهای تجاری</p></div><div class="pill">تیم مشاورین</div></div>
+    <div class="topbar"><div class="title"><h2>نمای کلی واحد مشاورین</h2><p>ساختار افراد و تیم‌ها</p></div><div class="pill">تیم مشاورین</div></div>
     ${teamFiltersHtml()}
     <div class="kpis">
       <div class="kpi"><div class="kpi-label">کل افراد</div><div class="kpi-value">${fa(k.total)}</div></div>
-      <div class="kpi"><div class="kpi-label">تیم لیدها</div><div class="kpi-value">${fa(k.teamLeads)}</div></div>
-      <div class="kpi"><div class="kpi-label">مشاور / راهنما</div><div class="kpi-value">${fa(k.advisors)}</div></div>
+      <div class="kpi"><div class="kpi-label">تیم لید</div><div class="kpi-value">${fa(k.teamLeads)}</div></div>
       <div class="kpi"><div class="kpi-label">تعداد تیم</div><div class="kpi-value">${fa(k.teams)}</div></div>
       <div class="kpi"><div class="kpi-label">خانم‌ها</div><div class="kpi-value">${fa(k.women)}</div></div>
+      <div class="kpi"><div class="kpi-label">آقایان</div><div class="kpi-value">${fa(k.men)}</div></div>
     </div>
-    <div class="grid2"><div class="panel"><div class="panel-head"><h3>ترکیب رده‌ها</h3></div>${bars(s.roleCounts)}</div><div class="panel"><div class="panel-head"><h3>واحدهای تجاری</h3></div>${bars(s.unitCounts)}</div></div>
+    <div class="panel"><div class="panel-head"><h3>ترکیب رده‌ها</h3></div>${bars(s.roleCounts)}</div>
     <div class="panel"><div class="panel-head"><h3>فهرست افراد</h3><span class="badge">${fa((s.rows||[]).length)} ردیف</span></div><div class="table-wrap"><table class="table"><thead><tr><th>نام</th><th>تیم لید</th><th>سرتیم</th><th>تیم</th><th>جنسیت</th><th>رده</th><th>واحد تجاری</th></tr></thead><tbody>${(s.rows||[]).map(r=>`<tr><td><b>${safe(r.name)}</b></td><td>${safe(r.teamLead||'—')}</td><td>${safe(r.seniorLead||'—')}</td><td>${safe(r.team||'—')}</td><td>${safe(r.gender||'—')}</td><td>${safe(r.role||'—')}</td><td>${safe(r.businessUnit||'—')}</td></tr>`).join('')}</tbody></table></div></div>`;
   bindTeamFilters();
   makeTableSortable($('teamPage'));
