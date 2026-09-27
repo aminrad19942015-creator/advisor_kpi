@@ -19,7 +19,7 @@ if (!username || !password || !connectorToken) {
 }
 
 const runtimeDir = path.join(__dirname, 'runtime');
-const profileDir = path.join(runtimeDir, 'browser-profile');
+const profileDir = path.join(runtimeDir, 'browser-profile-activity');
 fs.mkdirSync(runtimeDir, { recursive: true });
 
 function formatted(row, field) {
