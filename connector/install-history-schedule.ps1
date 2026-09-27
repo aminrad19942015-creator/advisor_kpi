@@ -7,10 +7,10 @@ if (-not (Test-Path $runCmd)) { throw "run-history.cmd not found." }
 
 $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument ('/c ""' + $runCmd + '""')
 $days = @("Saturday","Sunday","Monday","Tuesday","Wednesday","Thursday")
-$trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $days -At "07:00"
+$trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $days -At "07:15"
 $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew
 
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 Write-Host "Scheduled task installed: $taskName"
-Write-Host "Historical Lead / Opportunity / Calls / Ticket: Saturday-Thursday at 07:00. Friday is disabled."
+Write-Host "Historical Lead / Opportunity / Calls / Ticket: Saturday-Thursday at 07:15. Friday is disabled."
