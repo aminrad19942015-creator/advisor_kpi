@@ -4,6 +4,7 @@ const STATUS_NORM_SQL = "REPLACE(TRIM(COALESCE(last_status,'')),' ','')";
 const CLOSED_CONDITION_SQL = `${STATUS_NORM_SQL} NOT IN ('تماستکراری','عدمپاسخ(2بار)','عدمپاسخ(۲بار)','عدمتعیینوضعیتدرزمانمقرر')`;
 const TALKED_CONDITION_SQL = `${STATUS_NORM_SQL} NOT IN ('عدمپاسخ(2بار)','عدمپاسخ(۲بار)','عدمتعیینوضعیتدرزمانمقرر')`;
 const norm=(v:any)=>!v?[]:(Array.isArray(v)?v:[v]).filter(Boolean);
+const normPersonName=(v:any)=>String(v??'').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[\u200c\u200f\u202a-\u202e]/g,' ').replace(/\s+/g,' ').trim();
 const first=(rows:any[])=>rows?.[0]||{};
 const pairs=(rows:any[],k='label',c='count')=>(rows||[]).map(r=>[r[k]||'بدون مقدار',Number(r[c]||0)]);
 function sqlIn(column:string,values:any[],args:any[]){if(!values.length)return '';return ` AND ${column} IN (${values.map(v=>{args.push(v);return '?'}).join(',')})`;}
@@ -117,13 +118,24 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
  ]);
  const lk=first(q.leadKpi),ok=first(q.oppKpi),ck=first(q.callKpi),rk=first(q.repeatCalls),tk=first(q.ticketKpi);
  const days=(q.days||[]).map((r:any)=>r.day),dayCount=Math.max(1,days.length);
- const advisorMap:any={};const ensure=(name:string)=>name?(advisorMap[name]||(advisorMap[name]={name,teamLead:'',team:'',role:'',leads:0,talked:0,opps:0,calls:0,t8:0,tickets:0,attendanceDays:0})):null;
+ const members:any[]=q.allTeamMembers||[];
+ const people:any=Object.fromEntries(members.map((p:any)=>[p.name,p]));
+ const canonicalByNorm=new Map<string,string>();
+ for(const p of members){const k=normPersonName(p.name);if(k&&!canonicalByNorm.has(k))canonicalByNorm.set(k,p.name)}
+ const advisorMap:any={};
+ const ensure=(rawName:string)=>{
+  const raw=String(rawName||'').trim();
+  if(!raw)return null;
+  const name=people[raw]?raw:canonicalByNorm.get(normPersonName(raw));
+  if(!name)return null;
+  const p=people[name]||{};
+  return advisorMap[name]||(advisorMap[name]={name,teamLead:p.teamLead||'',seniorLead:p.seniorLead||'',team:p.team||'',role:p.role||'',leads:0,talked:0,opps:0,calls:0,t8:0,tickets:0,attendanceDays:0});
+ };
  for(const r of q.leadByAdvisor||[]){const x=ensure(r.name);if(x){x.leads=Number(r.leads||0);x.talked=Number(r.talked||0)}}
  for(const r of q.oppByAdvisor||[]){const x=ensure(r.name);if(x)x.opps=Number(r.opps||0)}
  for(const r of q.callByAdvisor||[]){const x=ensure(r.name);if(x){x.calls=Number(r.calls||0);x.t8=Number(r.t8||0)}}
  for(const r of q.ticketByAdvisor||[]){const x=ensure(r.name);if(x)x.tickets=Number(r.tickets||0)}
  for(const r of q.attendanceByAdvisor||[]){const x=ensure(r.name);if(x)x.attendanceDays=Number(r.attendanceDays||0)}
- const people:any=Object.fromEntries((q.allTeamMembers||[]).map((p:any)=>[p.name,p]));for(const name of Object.keys(advisorMap)){const p=people[name];if(p)Object.assign(advisorMap[name],{teamLead:p.teamLead||'',seniorLead:p.seniorLead||'',team:p.team||'',role:p.role||''})}
  const advisors=Object.values(advisorMap).map((r:any)=>{const total=Number(r.talked||0)+Number(r.opps||0)+Number(r.t8||0)+Number(r.tickets||0);const attendanceDays=Math.max(1,Number(r.attendanceDays||0));return {...r,attendanceDays,total,callAvg:Number(r.calls||0)/attendanceDays,leadAvg:Number(r.leads||0)/attendanceDays,talkedAvg:Number(r.talked||0)/attendanceDays,oppAvg:Number(r.opps||0)/attendanceDays,t8Avg:Number(r.t8||0)/attendanceDays,ticketAvg:Number(r.tickets||0)/attendanceDays,activityAvg:total/attendanceDays}}).sort((a:any,b:any)=>b.total-a.total);
  const buildTrend=(sets:any[])=>{const m:any={};const touch=(d:string)=>m[d]||(m[d]={day:d,talked:0,opp:0,calls:0,t8:0,tickets:0,total:0});for(const [rows,fields] of sets)for(const r of rows||[]){const x=touch(r.day);for(const f of fields)x[f]=Number(r[f]||0)}return Object.keys(m).sort().map(d=>{const r=m[d];r.total=r.talked+r.opp+r.t8+r.tickets;return r})};
  const trend=buildTrend([[q.trendLeads,['talked']],[q.trendOpps,['opp']],[q.trendCalls,['calls','t8']],[q.trendTickets,['tickets']]]);
