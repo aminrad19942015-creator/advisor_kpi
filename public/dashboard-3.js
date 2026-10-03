@@ -84,7 +84,7 @@ function renderTeam(){
   const s=state.data.team||{},k=s.kpis||{};
   $('teamPage').innerHTML=`
     ${reportBadge('وضعیت داده',fa(k.total)+' نفر')}
-    <div class="topbar"><div class="title"><h2>نمای کلی واحد مشاورین</h2><p>ساختار افراد و تیم‌ها</p></div><div class="pill">تیم مشاورین</div></div>
+    <div class="topbar"><div class="title"><h2>نمای کلی واحد مشاورین</h2><p>ساختار افراد و تیم‌ها</p></div><div class="topbar-actions"><button class="export-btn" data-export-tab="team" onclick="exportDashboardTab('team')">خروجی اکسل</button><div class="pill">تیم مشاورین</div></div></div>
     ${teamFiltersHtml()}
     <div class="kpis">
       <div class="kpi"><div class="kpi-label">کل افراد</div><div class="kpi-value">${fa(k.total)}</div></div>
@@ -103,7 +103,7 @@ function renderOpen(){
  const s=state.data.open||{},k=s.kpis||{},d=s.dimensions||{};
  $('openPage').innerHTML=`
   ${reportBadge('تاریخ امروز',new Date().toLocaleDateString('fa-IR'),state.data?.meta?.crmShadowLastSyncAt)}
-  <div class="topbar"><div class="title"><h2>سرنخ‌های باز روزانه</h2><p>تعداد و سن سرنخ‌های باز در دست اعضای واحد مشاورین</p></div><div class="pill">کل باز روزانه</div></div>
+  <div class="topbar"><div class="title"><h2>سرنخ‌های باز روزانه</h2><p>تعداد و سن سرنخ‌های باز در دست اعضای واحد مشاورین</p></div><div class="topbar-actions"><button class="export-btn" data-export-tab="open" onclick="exportDashboardTab('open')">خروجی اکسل</button><div class="pill">کل باز روزانه</div></div></div>
   <div class="hint">مبنای انتساب سرنخ به مشاور، ستون <b>«مالک»</b> است. سن از تاریخ ثبت محاسبه می‌شود. مهلت رسیدگی لید: <b>حقیقی ۱۸ روز کامل</b> و <b>حقوقی ۶۰ روز کامل</b>. «نزدیک سررسید» یعنی حداکثر ۳ روز تا پایان این مهلت باقی مانده باشد.</div>
   ${openFiltersHtml()}
   <div class="kpis">
