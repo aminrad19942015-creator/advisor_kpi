@@ -101,6 +101,40 @@ export async function getOpenSummary(filters:any={}){
  return {kpis:{...first(r[1]),...first(r[0])},advisors:r[2],dimensions,dataSource:openSource.source,sourceStatus:openSource};
 }
 
+export async function getOpenExportRows(filters:any={}){
+ const openSource=await operationalOpenLeadsSource();const openTable=openSource.table;
+ const args:any[]=[];let where=' WHERE 1=1';
+ where+=sqlIn('o.owner',norm(filters.advisor),args);
+ where+=sqlIn('o.lead_type',norm(filters.leadType),args);
+ where+=sqlIn('o.customer_rank',norm(filters.customerRank),args);
+ where+=sqlIn('o.campaign',norm(filters.campaign),args);
+ where+=sqlIn('o.last_status',norm(filters.lastStatus),args);
+ where+=sqlIn('o.source',norm(filters.source),args);
+ const roles=norm(filters.role),seniorLeads=norm(filters.seniorLead),teams=norm(filters.team),personUnits=norm(filters.personUnit);
+ if(roles.length||seniorLeads.length||teams.length||personUnits.length){
+  const pArgs:any[]=[];let pSql='SELECT name FROM team_members WHERE 1=1';
+  pSql+=sqlIn('role',roles,pArgs);pSql+=sqlIn('senior_lead',seniorLeads,pArgs);pSql+=sqlIn('team',teams,pArgs);pSql+=sqlIn('business_unit',personUnits,pArgs);
+  where+=` AND o.owner IN (${pSql})`;args.push(...pArgs);
+ }
+ const reasons=norm(filters.nextCallReason);
+ if(reasons.length){
+  const hasBlank=reasons.includes('بدون تسک'),normal=reasons.filter((x:any)=>x!=='بدون تسک'),parts:string[]=[];
+  if(normal.length){const qs=normal.map((v:any)=>{args.push(v);return '?'}).join(',');parts.push(`o.next_call_reason IN (${qs})`)}
+  if(hasBlank)parts.push("TRIM(COALESCE(o.next_call_reason,''))=''");
+  if(parts.length)where+=' AND ('+parts.join(' OR ')+')';
+ }
+ const age=filters.age||'';if(age==='0-3')where+=' AND o.age_days BETWEEN 0 AND 3';if(age==='4-7')where+=' AND o.age_days BETWEEN 4 AND 7';if(age==='8-14')where+=' AND o.age_days BETWEEN 8 AND 14';if(age==='15-30')where+=' AND o.age_days BETWEEN 15 AND 30';if(age==='31+')where+=' AND o.age_days >= 31';
+ return tursoSelect((`SELECT
+  o.lead_number AS "شماره سرنخ",o.created_date AS "تاریخ ثبت",o.last_modified_date AS "آخرین تغییر",
+  o.customer_name AS "نام مشتری",o.owner AS "مالک",COALESCE(t.role,'') AS "رده",COALESCE(t.team_lead,'') AS "تیم لید",
+  COALESCE(t.senior_lead,'') AS "سرتیم",COALESCE(t.team,'') AS "تیم",o.lead_type AS "نوع سرنخ",
+  o.customer_rank AS "رتبه مشتری",o.last_status AS "آخرین وضعیت",o.next_call_reason AS "دلیل تماس بعدی",
+  o.next_followup_at AS "تاریخ پیگیری بعدی",o.campaign AS "کمپین",o.source AS "منشا",o.source_software AS "نرم افزار منشا",
+  o.business_unit AS "واحد تجاری",o.age_days AS "سن لید"
+  FROM open_leads o LEFT JOIN team_members t ON t.name=o.owner ${where}
+  ORDER BY o.age_days DESC,o.owner,o.lead_number`).replaceAll('open_leads',openTable),args);
+}
+
 export async function getOpenNearDeadlineDetails(leadType:string,owner:string,filters:any={}){
  const openSource=await operationalOpenLeadsSource();const openTable=openSource.table;
  if(!['حقیقی','حقوقی'].includes(leadType))throw new Error('نوع لید برای سررسید نامعتبر است.');
