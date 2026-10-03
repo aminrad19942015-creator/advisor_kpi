@@ -61,7 +61,20 @@ function bindDonut(root,handler){
  root.querySelectorAll('.donut-segment,.donut-legend-item').forEach(el=>el.onclick=()=>handler(el.dataset.v));
 }
 function rangeText(s){if(!s||!s.days||!s.days.length)return '—';return s.days.length===1?fmt(s.days[0]):fmt(s.days[0])+' تا '+fmt(s.days[s.days.length-1])}
-function reportBadge(label,text){return `<div class="report-date-badge"><span>${label}</span><b>${safe(text)}</b></div>`}
+function syncTimeText(v){
+ if(!v)return '—';
+ const d=new Date(v);if(isNaN(d))return '—';
+ return new Intl.DateTimeFormat('fa-IR',{timeZone:'Asia/Tehran',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(d);
+}
+function syncDateTimeTitle(v){
+ if(!v)return '';
+ const d=new Date(v);if(isNaN(d))return '';
+ return new Intl.DateTimeFormat('fa-IR',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(d);
+}
+function reportBadge(label,text,updateAt=''){
+ const update=updateAt?`<i class="report-badge-sep"></i><span class="report-update-label">آخرین بروزرسانی</span><b class="report-update-time" title="${safe(syncDateTimeTitle(updateAt))}">${safe(syncTimeText(updateAt))}</b>`:'';
+ return `<div class="report-date-badge"><span>${label}</span><b>${safe(text)}</b>${update}</div>`;
+}
 function makeTableSortable(root=document){root.querySelectorAll('table.table').forEach(table=>{[...table.querySelectorAll('thead th')].forEach((th,col)=>{if(th.dataset.bound)return;th.dataset.bound='1';th.classList.add('sortable');th.onclick=()=>{const tbody=table.tBodies[0];if(!tbody)return;const asc=th.dataset.dir!=='asc';[...table.querySelectorAll('thead th')].forEach(h=>{h.dataset.dir='';h.classList.remove('sort-asc','sort-desc')});th.dataset.dir=asc?'asc':'desc';th.classList.add(asc?'sort-asc':'sort-desc');const rows=[...tbody.rows];rows.sort((a,b)=>{let x=a.cells[col]?.textContent?.trim()||'',y=b.cells[col]?.textContent?.trim()||'';const nx=Number(x.replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٬,]/g,'')),ny=Number(y.replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٬,]/g,''));let c=Number.isFinite(nx)&&Number.isFinite(ny)?nx-ny:x.localeCompare(y,'fa',{numeric:true});return asc?c:-c});rows.forEach(r=>tbody.appendChild(r))}})})}
 
 const TREND_METRICS={
