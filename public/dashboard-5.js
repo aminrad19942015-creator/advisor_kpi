@@ -12,6 +12,25 @@ function detailCell(c,v){
  return String(v);
 }
 function rowsTable(rows){if(!rows||!rows.length)return '<div class="empty">رکوردی وجود ندارد.</div>';const cols=Object.keys(rows[0]);return `<div class="table-wrap activity-detail-wrap"><table class="table"><thead><tr>${cols.map(c=>`<th>${safe(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${safe(detailCell(c,r[c]))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
+async function exportDashboardTab(tab){
+ const filters=filterState[tab]||{};
+ const btn=document.querySelector(`[data-export-tab="${tab}"]`);
+ const oldText=btn?.textContent||'خروجی اکسل';
+ try{
+  if(btn){btn.disabled=true;btn.textContent='در حال ساخت فایل...';}
+  const res=await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tab,filters})});
+  if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.error||('HTTP '+res.status));}
+  const blob=await res.blob();
+  const cd=res.headers.get('content-disposition')||'';
+  const m=cd.match(/filename\*=UTF-8''([^;]+)/i);
+  const filename=m?decodeURIComponent(m[1]):('dashboard-'+tab+'.xlsx');
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+  toast('فایل اکسل با فیلترهای فعلی آماده شد.');
+ }catch(e){toast('خطا در خروجی اکسل: '+(e?.message||e||'خطای نامشخص'))}
+ finally{if(btn){btn.disabled=false;btn.textContent=oldText;}}
+}
 function loadActivityDetail(period,type,user){const box=$(`${period}Detail`);box.style.display='block';$(`${period}DetailSub`).textContent='در حال دریافت...';$(`${period}DetailBody`).innerHTML='<div class="empty">در حال دریافت...</div>';google.script.run.withFailureHandler(e=>{$(`${period}DetailBody`).innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>'}).withSuccessHandler(rows=>{$(`${period}DetailSub`).textContent=fa(rows.length)+' رکورد — '+user;$(`${period}DetailBody`).innerHTML=rowsTable(rows);makeTableSortable(box);box.scrollIntoView({behavior:'smooth',block:'start'})}).getActivityDetails(period,type,user,filterState[period]||{})}
 function loadPeriodKpiDetail(period,type,title){
  const box=$(`${period}Detail`);
