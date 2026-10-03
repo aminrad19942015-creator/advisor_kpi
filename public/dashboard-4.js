@@ -51,7 +51,7 @@ function renderPeriod(period,pageId,title){
  const s=state.data[period]||{},k=s.kpis||{},d=s.dimensions||{};
  const advisorSelected=(filterState[period]?.advisor||[]).length>0;
  $(pageId).innerHTML=`
-  ${reportBadge(period==='daily'?'تاریخ گزارش':'بازه گزارش',rangeText(s))}
+  ${reportBadge(period==='daily'?'تاریخ گزارش':'بازه گزارش',rangeText(s),state.data?.meta?.crmActivityLastSyncAt)}
   <div class="topbar"><div class="title"><h2>${title}</h2><p>نمای مدیریتی یکپارچه فعالیت، روند روزانه و سرانه عملکرد مشاوران</p></div><div class="pill">۴ منبع ${period==='daily'?'روزانه':period==='weekly'?'هفتگی':'ماهانه'}</div></div>
   ${periodFiltersHtml(period)}
   ${activityCards(k,period)}
