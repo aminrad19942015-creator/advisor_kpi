@@ -25,8 +25,10 @@ function iranActivityRanges(){
   const y=nowIran.getUTCFullYear(),m=nowIran.getUTCMonth(),d=nowIran.getUTCDate();
   const hh=nowIran.getUTCHours(),mm=nowIran.getUTCMinutes(),ss=nowIran.getUTCSeconds(),ms=nowIran.getUTCMilliseconds();
   const todayMidnight=Date.UTC(y,m,d)-offsetMs;
+  const dailyOffsetDays=nowIran.getUTCDay()===6?3:1; // Saturday report uses Wednesday; otherwise previous calendar day.
+  const dailyStart=todayMidnight-dailyOffsetDays*86400000;
   return {
-    daily:{start:new Date(todayMidnight-86400000).toISOString(),end:new Date(todayMidnight).toISOString()},
+    daily:{start:new Date(dailyStart).toISOString(),end:new Date(dailyStart+86400000).toISOString()},
     weekly:{start:new Date(nowUtc-7*86400000).toISOString(),end:new Date(nowUtc).toISOString()},
     monthly:{start:new Date(Date.UTC(y,m-1,d,hh,mm,ss,ms)-offsetMs).toISOString(),end:new Date(nowUtc).toISOString()}
   };
