@@ -1,7 +1,9 @@
 import { tursoBatch, tursoSelect, type TursoStatement } from './turso';
 
 const STATUS_NORM_SQL = "REPLACE(TRIM(COALESCE(last_status,'')),' ','')";
-const CLOSED_CONDITION_SQL = `${STATUS_NORM_SQL} NOT IN ('تماستکراری','عدمپاسخ(2بار)','عدمپاسخ(۲بار)','عدمتعیینوضعیتدرزمانمقرر')`;
+// Activity lead tables are populated by the connector with CRM statecode ne 0 only.
+// Therefore every row here is a closed lead (Qualified or Disqualified), regardless of status reason.
+const CLOSED_CONDITION_SQL = '1=1';
 const TALKED_CONDITION_SQL = `${STATUS_NORM_SQL} NOT IN ('عدمپاسخ(2بار)','عدمپاسخ(۲بار)','عدمتعیینوضعیتدرزمانمقرر')`;
 const norm=(v:any)=>!v?[]:(Array.isArray(v)?v:[v]).filter(Boolean);
 const normPersonName=(v:any)=>String(v??'').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[\u200c\u200f\u202a-\u202e]/g,' ').replace(/\s+/g,' ').trim();
@@ -119,6 +121,15 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
  const lk=first(q.leadKpi),ok=first(q.oppKpi),ck=first(q.callKpi),rk=first(q.repeatCalls),tk=first(q.ticketKpi);
  const days=(q.days||[]).map((r:any)=>r.day),dayCount=Math.max(1,days.length);
  const members:any[]=q.allTeamMembers||[];
+ const selectedAdvisors=norm(filters?.advisor),selectedTeamLeads=norm(filters?.teamLead),selectedSeniorLeads=norm(filters?.seniorLead),selectedTeams=norm(filters?.team),selectedRoles=norm(filters?.role);
+ const denominatorMembers=members.filter((p:any)=>
+  (!selectedAdvisors.length||selectedAdvisors.includes(p.name))&&
+  (!selectedTeamLeads.length||selectedTeamLeads.includes(p.teamLead))&&
+  (!selectedSeniorLeads.length||selectedSeniorLeads.includes(p.seniorLead))&&
+  (!selectedTeams.length||selectedTeams.includes(p.team))&&
+  (!selectedRoles.length||selectedRoles.includes(p.role))
+ );
+ const memberCount=denominatorMembers.length;
  const people:any=Object.fromEntries(members.map((p:any)=>[p.name,p]));
  const canonicalByNorm=new Map<string,string>();
  for(const p of members){const k=normPersonName(p.name);if(k&&!canonicalByNorm.has(k))canonicalByNorm.set(k,p.name)}
@@ -148,7 +159,20 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
  for(const p of q.allTeamMembers||[]){if(p.role==='راهنما')roleCounts.guide++;else if(p.role==='مشاور')roleCounts.advisor++;else if(p.role==='مشاور ارشد'||p.role==='سرتیم')roleCounts.senior++;}
  const handled=Number(lk.handled||0),closed=Number(lk.closed||0),talked=Number(lk.talked||0),noStatusCount=Number(lk.noStatusCount||0),noResponseCount=Number(lk.noResponseCount||0),oppLead=Number(ok.oppLead||0),opp=Number(ok.opp||0),calls=Number(ck.calls||0),t8=Number(ck.t8||0),tickets=Number(tk.tickets||0),uniqueCalls=Number(ck.uniqueCalls||0),repeatCalls=Number(rk.repeatCalls||0);
  const noStatusRate=handled?noStatusCount/handled*100:0,noResponseRate=handled?noResponseCount/handled*100:0;
- return {period,days,dayCount,unitAdvisorCount:(q.allTeamMembers||[]).length,roleTrend,roleCounts,kpis:{total:talked+opp+t8+tickets,handled,closed,talked,noStatusCount,noStatusRate,noResponseCount,noResponseRate,oppLead,opp,calls,t8,tickets,closeAvg:lk.closeAvg==null?null:Number(lk.closeAvg),uniqueCalls,repeatCalls,callAvg:calls/dayCount,closedAvg:closed/dayCount,talkedAvg:talked/dayCount},advisors,dimensions:{leadState:pairs(q.leadState),rank:pairs(q.rank),leadSource:pairs(q.leadSource),campaign:pairs(q.campaign),oppKind:pairs(q.oppKind),oppStatus:pairs(q.oppStatus),callSubject:pairs(q.callSubject),leadTicketTopic:pairs(q.leadTicketTopic),ticketState:pairs(q.ticketState),ticketSubject:pairs(q.ticketSubject)},trend,teamTrend,unitTrend};
+ return {period,days,dayCount,unitAdvisorCount:(q.allTeamMembers||[]).length,roleTrend,roleCounts,kpis:{total:talked+opp+t8+tickets,handled,closed,talked,noStatusCount,noStatusRate,noResponseCount,noResponseRate,oppLead,opp,calls,t8,tickets,closeAvg:lk.closeAvg==null?null:Number(lk.closeAvg),uniqueCalls,repeatCalls,memberCount,callAvg:calls/dayCount,closedAvg:closed/dayCount,talkedAvg:talked/dayCount,callAvgPerPerson:memberCount?(calls/dayCount)/memberCount:0,closedAvgPerPerson:memberCount?(closed/dayCount)/memberCount:0,talkedAvgPerPerson:memberCount?(talked/dayCount)/memberCount:0},advisors,dimensions:{leadState:pairs(q.leadState),rank:pairs(q.rank),leadSource:pairs(q.leadSource),campaign:pairs(q.campaign),oppKind:pairs(q.oppKind),oppStatus:pairs(q.oppStatus),callSubject:pairs(q.callSubject),leadTicketTopic:pairs(q.leadTicketTopic),ticketState:pairs(q.ticketState),ticketSubject:pairs(q.ticketSubject)},trend,teamTrend,unitTrend};
+}
+
+export async function getPeriodExportData(period:string,filters:any={}){
+ const L=table(period,'lead'),O=table(period,'opp'),C=table(period,'call'),T=table(period,'ticket');
+ const lw=whereFor(filters,'lead',period),ow=whereFor(filters,'opp',period),cw=whereFor(filters,'call',period),tw=whereFor(filters,'ticket',period);
+ const [summary,leads,opportunities,calls,tickets]=await Promise.all([
+  getFilteredPeriodSummary(period,filters),
+  tursoSelect(`SELECT * FROM ${L}${lw.where} ORDER BY last_modified_date DESC`,lw.args),
+  tursoSelect(`SELECT * FROM ${O}${ow.where} ORDER BY created_date DESC`,ow.args),
+  tursoSelect(`SELECT * FROM ${C}${cw.where} ORDER BY start_date DESC`,cw.args),
+  tursoSelect(`SELECT * FROM ${T}${tw.where} ORDER BY closed_at DESC`,tw.args)
+ ]);
+ return {summary,leads,opportunities,calls,tickets};
 }
 
 export async function getLeadStatusKpiDetails(period:string,type:string,filters:any={}){
