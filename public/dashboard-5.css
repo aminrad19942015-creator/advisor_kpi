@@ -10,3 +10,9 @@
 @media(max-width:1250px){#openPage .lead-filter-row{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
 @media(max-width:760px){#openPage .lead-filter-row{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 @media(max-width:520px){#openPage .lead-filter-row{grid-template-columns:1fr!important}}
+
+.topbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-start}
+.export-btn{height:35px;padding:0 13px;border-radius:10px;border:1px solid rgba(63,224,205,.28);background:rgba(63,224,205,.09);color:var(--primary2);font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}
+.export-btn:hover{background:rgba(63,224,205,.16);border-color:rgba(63,224,205,.5)}
+.export-btn:disabled{opacity:.6;cursor:wait}
+@media(max-width:620px){.topbar-actions{width:100%;justify-content:space-between}.export-btn{flex:1}}
