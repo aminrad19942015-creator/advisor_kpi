@@ -33,7 +33,7 @@ function activityCards(k,period){
  const click=(type,label,body)=>`<div class="kpi clickable" data-period-kpi="${type}" data-period="${period}" data-kpi-title="${label}">${body}</div>`;
  return `<div class="activity-kpis weekly-kpis">
   <div class="kpi"><div class="kpi-label">${title}</div><div class="kpi-value">${fa(k.total)}</div><div class="kpi-sub">لید صحبت‌شده + فرصت OPP + T8 + تیکت</div></div>
-  ${click('closed','لید بسته‌شده',`<div class="kpi-label">لید بسته‌شده</div><div class="kpi-value">${fa(k.closed)}</div><div class="kpi-sub">به‌جز تماس تکراری، عدم پاسخ و عدم تعیین وضعیت</div>`)}
+  ${click('closed','لید بسته‌شده',`<div class="kpi-label">لید بسته‌شده</div><div class="kpi-value">${fa(k.closed)}</div><div class="kpi-sub">تمام لیدهای Qualified / Disqualified</div>`)}
   <div class="kpi"><div class="kpi-label">میانگین زمان بستن لید</div><div class="kpi-value">${k.closeAvg==null?'—':fa(Number(k.closeAvg).toFixed(1))}</div><div class="kpi-sub">روز؛ از تاریخ ثبت تا تاریخ آخرین تغییر</div></div>
   ${click('talked','لید صحبت‌شده',`<div class="kpi-label">لید صحبت‌شده</div><div class="kpi-value">${fa(k.talked)}</div><div class="kpi-sub">مبنای فعالیت؛ تماس تکراری نیز فعالیت محسوب می‌شود</div>`)}
   <div class="kpi clickable" data-status-kpi="noStatus" data-period="${period}"><div class="kpi-label">نرخ عدم تعیین وضعیت در زمان مقرر</div><div class="kpi-value">${fa(Number(k.noStatusRate||0).toFixed(1))}٪</div><div class="kpi-sub">${fa(k.noStatusCount||0)} از ${fa(k.handled||0)} لید رسیدگی‌شده</div></div>
@@ -43,7 +43,7 @@ function activityCards(k,period){
   ${click('calls','کل تماس',`<div class="kpi-label">کل تماس</div><div class="kpi-value">${fa(k.calls)}</div><div class="kpi-sub">${fa(k.uniqueCalls)} لید یکتا / ${fa(k.repeatCalls)} تماس اضافه</div>`)}
   ${click('t8','تماس ورودی T8',`<div class="kpi-label">تماس ورودی T8</div><div class="kpi-value">${fa(k.t8)}</div><div class="kpi-sub">زیرمجموعه تماس‌ها</div>`)}
   ${click('tickets','تیکت',`<div class="kpi-label">تیکت</div><div class="kpi-value">${fa(k.tickets)}</div><div class="kpi-sub">رسیدگی‌شده</div>`)}
-  ${period==='daily'?'':`<div class="kpi accent-kpi"><div class="kpi-label">سرانه تماس روزانه واحد</div><div class="kpi-value">${fa(Number(k.callAvg||0).toFixed(2))}</div></div><div class="kpi accent-kpi"><div class="kpi-label">سرانه لید بسته در روز</div><div class="kpi-value">${fa(Number(k.closedAvg||0).toFixed(2))}</div></div><div class="kpi accent-kpi"><div class="kpi-label">سرانه لید صحبت‌شده در روز</div><div class="kpi-value">${fa(Number(k.talkedAvg||0).toFixed(2))}</div></div>`}
+  ${period==='daily'?'':`<div class="kpi accent-kpi"><div class="kpi-label">سرانه تماس روزانه واحد</div><div class="kpi-value">${fa(Number(k.callAvg||0).toFixed(2))}</div><div class="kpi-sub">سرانه هر نفر: ${fa(Number(k.callAvgPerPerson||0).toFixed(2))} — بر مبنای ${fa(k.memberCount||0)} نفر</div></div><div class="kpi accent-kpi"><div class="kpi-label">سرانه لید بسته در روز</div><div class="kpi-value">${fa(Number(k.closedAvg||0).toFixed(2))}</div><div class="kpi-sub">سرانه هر نفر: ${fa(Number(k.closedAvgPerPerson||0).toFixed(2))} — بر مبنای ${fa(k.memberCount||0)} نفر</div></div><div class="kpi accent-kpi"><div class="kpi-label">سرانه لید صحبت‌شده در روز</div><div class="kpi-value">${fa(Number(k.talkedAvg||0).toFixed(2))}</div><div class="kpi-sub">سرانه هر نفر: ${fa(Number(k.talkedAvgPerPerson||0).toFixed(2))} — بر مبنای ${fa(k.memberCount||0)} نفر</div></div>`}
  </div>`;
 }
 
