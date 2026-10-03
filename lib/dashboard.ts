@@ -7,11 +7,19 @@ const norm=(v:any)=>!v?[]:(Array.isArray(v)?v:[v]).filter(Boolean);
 function sqlIn(column:string,values:any[],args:any[]){if(!values.length)return '';const qs=values.map(v=>{args.push(v);return '?'}).join(',');return ` AND ${column} IN (${qs})`;}
 
 export async function getMeta(){
- const [v,s]=await Promise.all([
-  tursoSelect("SELECT value FROM dashboard_meta WHERE key='data_version' LIMIT 1").catch(()=>[]),
-  tursoSelect("SELECT value FROM dashboard_meta WHERE key='last_sync_at' LIMIT 1").catch(()=>[])
- ]);
- return {source:databaseProvider(),dataVersion:v?.[0]?.value||'legacy',lastSyncAt:s?.[0]?.value||'',generatedAt:new Date().toISOString()};
+ const rows=await tursoSelect("SELECT key,value FROM dashboard_meta WHERE key IN ('data_version','last_sync_at','crm_shadow_last_sync_at','crm_activity_last_sync_at')").catch(()=>[]);
+ const meta:any=Object.fromEntries((rows||[]).map((r:any)=>[r.key,r.value]));
+ const openSyncAt=meta.crm_shadow_last_sync_at||'';
+ const activitySyncAt=meta.crm_activity_last_sync_at||'';
+ const timestamps=[meta.last_sync_at,openSyncAt,activitySyncAt].filter(Boolean).map((x:any)=>({raw:x,time:new Date(x).getTime()})).filter((x:any)=>Number.isFinite(x.time)).sort((a:any,b:any)=>b.time-a.time);
+ return {
+  source:databaseProvider(),
+  dataVersion:meta.data_version||'legacy',
+  lastSyncAt:timestamps[0]?.raw||'',
+  crmShadowLastSyncAt:openSyncAt,
+  crmActivityLastSyncAt:activitySyncAt,
+  generatedAt:new Date().toISOString()
+ };
 }
 
 export async function getTeamSummary(filters:any={}){
