@@ -102,7 +102,7 @@ function renderTeam(){
 function renderOpen(){
  const s=state.data.open||{},k=s.kpis||{},d=s.dimensions||{};
  $('openPage').innerHTML=`
-  ${reportBadge('تاریخ امروز',new Date().toLocaleDateString('fa-IR'))}
+  ${reportBadge('تاریخ امروز',new Date().toLocaleDateString('fa-IR'),state.data?.meta?.crmShadowLastSyncAt)}
   <div class="topbar"><div class="title"><h2>سرنخ‌های باز روزانه</h2><p>تعداد و سن سرنخ‌های باز در دست اعضای واحد مشاورین</p></div><div class="pill">کل باز روزانه</div></div>
   <div class="hint">مبنای انتساب سرنخ به مشاور، ستون <b>«مالک»</b> است. سن از تاریخ ثبت محاسبه می‌شود. مهلت رسیدگی لید: <b>حقیقی ۱۸ روز کامل</b> و <b>حقوقی ۶۰ روز کامل</b>. «نزدیک سررسید» یعنی حداکثر ۳ روز تا پایان این مهلت باقی مانده باشد.</div>
   ${openFiltersHtml()}
