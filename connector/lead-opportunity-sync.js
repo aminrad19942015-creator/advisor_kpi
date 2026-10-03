@@ -25,7 +25,9 @@ function ranges(){
  const offset=3.5*3600*1000,now=Date.now(),iran=new Date(now+offset);
  const y=iran.getUTCFullYear(),m=iran.getUTCMonth(),d=iran.getUTCDate(),hh=iran.getUTCHours(),mm=iran.getUTCMinutes(),ss=iran.getUTCSeconds(),ms=iran.getUTCMilliseconds();
  const midnight=Date.UTC(y,m,d)-offset;
- return {daily:{start:new Date(midnight-86400000).toISOString(),end:new Date(midnight).toISOString()},weekly:{start:new Date(now-7*86400000).toISOString(),end:new Date(now).toISOString()},monthly:{start:new Date(Date.UTC(y,m-1,d,hh,mm,ss,ms)-offset).toISOString(),end:new Date(now).toISOString()}};
+ const dailyOffsetDays=iran.getUTCDay()===6?3:1; // Saturday report uses Wednesday; otherwise previous calendar day.
+ const dailyStart=midnight-dailyOffsetDays*86400000;
+ return {daily:{start:new Date(dailyStart).toISOString(),end:new Date(dailyStart+86400000).toISOString()},weekly:{start:new Date(now-7*86400000).toISOString(),end:new Date(now).toISOString()},monthly:{start:new Date(Date.UTC(y,m-1,d,hh,mm,ss,ms)-offset).toISOString(),end:new Date(now).toISOString()}};
 }
 
 async function authenticate(page){
