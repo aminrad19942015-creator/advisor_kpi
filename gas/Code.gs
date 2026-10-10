@@ -332,3 +332,11 @@ function getExportChunk(tab, dataset, filters, offset, limit) {
 function getDashboardDiagnostics() {
   return fetchDashboardRpc_('getDashboardDiagnostics', []);
 }
+
+
+function runCutoverPreflight() {
+  return {
+    gas: getGasHealth(),
+    dashboard: getDashboardDiagnostics()
+  };
+}
