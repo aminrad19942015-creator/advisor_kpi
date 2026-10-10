@@ -1,0 +1,43 @@
+name: GAS migration validation
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-parse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout reviewed PR commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Runtime versions
+        run: |
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Next.js production build
+        run: npm run build
+
+      - name: Parse GAS server JavaScript
+        run: |
+          cp gas/Code.gs /tmp/advisor-gas-code.js
+          node --check /tmp/advisor-gas-code.js
+
+      - name: Parse GAS browser JavaScript
+        run: |
+          sed '1d;$d' gas/Scripts.html > /tmp/advisor-gas-scripts.js
+          node --check /tmp/advisor-gas-scripts.js
+
+      - name: Validate GAS manifest JSON
+        run: node -e "JSON.parse(require('fs').readFileSync('gas/appsscript.json','utf8')); console.log('GAS manifest JSON OK')"
