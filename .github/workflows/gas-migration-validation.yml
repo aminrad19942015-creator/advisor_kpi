@@ -42,5 +42,10 @@ jobs:
           sed '1d;$d' gas/Scripts.html > /tmp/advisor-gas-scripts.js
           node --check /tmp/advisor-gas-scripts.js
 
+      - name: Parse GAS admin browser JavaScript
+        run: |
+          sed '1d;$d' gas/AdminScripts.html > /tmp/advisor-gas-admin-scripts.js
+          node --check /tmp/advisor-gas-admin-scripts.js
+
       - name: Validate GAS manifest JSON
         run: node -e "JSON.parse(require('fs').readFileSync('gas/appsscript.json','utf8')); console.log('GAS manifest JSON OK')"
