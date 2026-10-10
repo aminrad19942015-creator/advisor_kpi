@@ -153,8 +153,8 @@ async function api(body){
   let lastError;
   for(let attempt=1;attempt<=4;attempt++){
     try{
-      const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json','x-crm-connector-token':connectorToken},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)});
-      const txt=await r.text();if(!r.ok) throw new Error('Dashboard activity API HTTP '+r.status+': '+txt);
+      const r=await dashboardRequest(API_URL,{method:'POST',headers:{'Content-Type':'application/json','x-crm-connector-token':connectorToken},body:JSON.stringify(body),timeoutMs:60000});
+      const txt=r.text;if(!r.ok) throw new Error('Dashboard activity API HTTP '+r.status+': '+txt);
       return JSON.parse(txt);
     }catch(e){lastError=e;console.log('Dashboard API attempt '+attempt+' failed: '+(e?.message||e));if(attempt<4) await new Promise(res=>setTimeout(res,1500*attempt));}
   }
