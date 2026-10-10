@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>مدیریت داشبورد مشاوران</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<?!= include('AdminStyles'); ?>
+</head>
+<body>
+<div id="loginView" class="login-shell">
+  <form id="loginForm" class="login-card">
+    <div class="logo">م</div>
+    <h1>مدیریت داشبورد مشاوران</h1>
+    <p>ورود مستقل مدیریت</p>
+    <input id="adminPassword" type="password" autocomplete="current-password" placeholder="رمز مدیریت">
+    <button id="loginBtn" type="submit">ورود</button>
+    <div id="loginMsg" class="msg"></div>
+  </form>
+</div>
+
+<div id="adminView" class="admin-shell" hidden>
+  <header class="admin-head">
+    <div><h1>پنل مدیریت</h1><p>Supabase + Google Apps Script</p></div>
+    <div class="head-actions">
+      <button class="secondary" id="qaBtn">کنترل سلامت</button>
+      <button class="secondary" id="recoveryBtn">درخواست بازیابی Backup</button>
+      <button class="danger" id="logoutBtn">خروج</button>
+    </div>
+  </header>
+
+  <div id="globalMsg" class="notice" hidden></div>
+
+  <section class="card">
+    <div class="section-head"><div><span class="eyebrow">SYSTEM HEALTH</span><h2>وضعیت داده و Connector</h2></div><button class="secondary" id="refreshBtn">بروزرسانی</button></div>
+    <div id="overviewCards" class="stats-grid"></div>
+    <div id="syncInfo" class="sync-grid"></div>
+    <div id="commandsBox" class="commands"></div>
+  </section>
+
+  <section class="card">
+    <div class="section-head">
+      <div><span class="eyebrow">TEAM MASTER DATA</span><h2>مدیریت لیست مشاوران</h2></div>
+      <div class="head-actions"><input id="teamSearch" class="search" placeholder="جست‌وجو..."><button id="saveTeamBtn">ذخیره تغییرات</button></div>
+    </div>
+    <div class="add-grid">
+      <input data-new="name" placeholder="نام و نام خانوادگی">
+      <input data-new="personnel_code" placeholder="کد پرسنلی">
+      <input data-new="email" placeholder="ایمیل شرکتی">
+      <input data-new="team_lead" placeholder="تیم لید">
+      <input data-new="senior_lead" placeholder="سرتیم">
+      <input data-new="team" placeholder="تیم">
+      <input data-new="gender" placeholder="جنسیت">
+      <input data-new="role" placeholder="رده">
+      <input data-new="business_unit" placeholder="واحد تجاری">
+      <button id="addTeamBtn">＋ افزودن نفر</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>نام</th><th>کد</th><th>ایمیل</th><th>تیم لید</th><th>سرتیم</th><th>تیم</th><th>جنسیت</th><th>رده</th><th>واحد</th><th></th></tr></thead>
+        <tbody id="teamBody"></tbody>
+      </table>
+    </div>
+    <div id="teamMeta" class="muted"></div>
+  </section>
+
+  <section class="card">
+    <div class="section-head">
+      <div><span class="eyebrow">CRM CONTROL CENTER</span><h2>تنظیمات CRM و منابع داده</h2></div>
+      <button id="saveConfigBtn">ذخیره تنظیمات CRM</button>
+    </div>
+    <div class="schedule-box">
+      <b>زمان‌بندی ثابت:</b>
+      <span>شنبه تا پنج‌شنبه — 07:00 اجرای کامل، 09:00 / 12:00 / 15:00 Open Leads، جمعه بدون اجرا</span>
+    </div>
+    <div id="configGrid" class="config-grid"></div>
+  </section>
+</div>
+<?!= include('AdminScripts'); ?>
+</body>
+</html>
