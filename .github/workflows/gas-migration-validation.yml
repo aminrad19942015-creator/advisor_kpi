@@ -1,6 +1,9 @@
 name: GAS migration validation
 
 on:
+  push:
+    branches:
+      - gas-dashboard-v1
   pull_request:
     branches:
       - main
