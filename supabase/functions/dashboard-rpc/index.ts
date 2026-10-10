@@ -3,19 +3,103 @@ import { getMeta, getTeamSummary, getTeamFilterOptions, getOpenFilterOptions, ge
 import { getFilteredPeriodSummary, getActivityDetails, getPeriodKpiDetails, getDimensionDetails, getRepeatedCallDetails, getAdvisorTrend, getPeriodCampaignOptions, getLeadStatusKpiDetails } from './period.ts';
 import { getDashboardBootstrap, getDashboardInitialPayload } from './bootstrap.ts';
 import { getOpenLeadDetails } from './open-detail.ts';
+import { tursoBatch, tursoSelect } from './turso.ts';
 
 type Handler=(args:any[])=>Promise<any>;
 
-const handlers:Record<string,Handler>={
-  getDashboardBootstrap: async ()=>getDashboardBootstrap(),
-  getDashboardInitialPayload: async ([openFilters])=>getDashboardInitialPayload(openFilters||{}),
-  getPeriodInitialPayload: async ([period,filters])=>{
+async function hashText(value:string){
+  const bytes=new TextEncoder().encode(value);
+  const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
+  return Array.from(digest).map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+
+async function versionValue(keys:string[]){
+  const placeholders=keys.map(()=>'?').join(',');
+  const rows=await tursoSelect(
+    `SELECT key,value FROM dashboard_meta WHERE key IN (${placeholders})`,
+    keys
+  );
+  const map=Object.fromEntries(rows.map((r:any)=>[String(r.key),String(r.value||'')]));
+  return keys.map(k=>map[k]||'').join('|');
+}
+
+async function persistentCached(cacheKey:string,sourceVersion:string,ttlSeconds:number,compute:()=>Promise<any>){
+  const hit=await tursoSelect(
+    `SELECT payload FROM private.dashboard_rpc_cache
+     WHERE cache_key=? AND source_version=? AND expires_at>now()
+     LIMIT 1`,
+    [cacheKey,sourceVersion]
+  ).catch(()=>[]);
+
+  if(hit?.length){
+    return {value:hit[0].payload,cache:'postgres-hit'};
+  }
+
+  const value=await compute();
+  const expiresAt=new Date(Date.now()+ttlSeconds*1000).toISOString();
+
+  await tursoBatch([{
+    sql:`INSERT INTO private.dashboard_rpc_cache(cache_key,payload,source_version,created_at,expires_at)
+         VALUES(?,?::jsonb,?,now(),?::timestamptz)
+         ON CONFLICT(cache_key) DO UPDATE SET
+           payload=excluded.payload,
+           source_version=excluded.source_version,
+           created_at=excluded.created_at,
+           expires_at=excluded.expires_at`,
+    args:[cacheKey,JSON.stringify(value),sourceVersion,expiresAt]
+  }]).catch(()=>{});
+
+  // Opportunistic bounded cleanup; it is never on the critical correctness path.
+  tursoBatch([{sql:`DELETE FROM private.dashboard_rpc_cache WHERE expires_at<now()-interval '1 day'`}]).catch(()=>{});
+
+  return {value,cache:'postgres-miss'};
+}
+
+function periodFiltersAreInitial(filters:any){
+  for(const value of Object.values(filters||{})){
+    if(Array.isArray(value) && value.filter(Boolean).length)return false;
+    if(!Array.isArray(value) && value!==null && value!==undefined && String(value).trim()!=='')return false;
+  }
+  return true;
+}
+
+async function cachedInitialPayload(openFilters:any){
+  const sourceVersion=await versionValue(['data_version','crm_shadow_last_sync_at']);
+  const hash=(await hashText(stable(openFilters||{}))).slice(0,24);
+  const cached=await persistentCached(
+    'dashboard-initial:'+hash,
+    sourceVersion,
+    300,
+    ()=>getDashboardInitialPayload(openFilters||{})
+  );
+  return cached.value;
+}
+
+async function cachedPeriodInitial(period:string,filters:any){
+  const compute=async ()=>{
     const [campaignOptions,summary]=await Promise.all([
       getPeriodCampaignOptions(period),
       getFilteredPeriodSummary(period,filters||{})
     ]);
     return {campaignOptions,summary};
-  },
+  };
+
+  if(!periodFiltersAreInitial(filters))return compute();
+
+  const sourceVersion=await versionValue(['data_version','crm_activity_last_sync_at']);
+  const cached=await persistentCached(
+    'period-initial:'+String(period||''),
+    sourceVersion,
+    43200,
+    compute
+  );
+  return cached.value;
+}
+
+const handlers:Record<string,Handler>={
+  getDashboardBootstrap: async ()=>getDashboardBootstrap(),
+  getDashboardInitialPayload: async ([openFilters])=>cachedInitialPayload(openFilters||{}),
+  getPeriodInitialPayload: async ([period,filters])=>cachedPeriodInitial(String(period||''),filters||{}),
   getTeamFilteredSummary: async ([filters])=>getTeamSummary(filters||{}),
   getTeamFilterOptions: async ()=>getTeamFilterOptions(),
   getOpenFilteredSummary: async ([filters])=>getOpenSummary(filters||{}),
@@ -42,11 +126,11 @@ function stable(value:any):string{
 }
 
 function ttlFor(method:string){
-  if(method==='getDashboardInitialPayload'||method==='getDashboardBootstrap')return 30000;
-  if(method==='getTeamFilterOptions'||method==='getOpenFilterOptions')return 120000;
-  if(method==='getPeriodInitialPayload')return 20000;
-  if(method==='getFilteredPeriodSummary')return 12000;
-  if(method==='getDashboardMeta')return 20000;
+  // Heavy initial payloads use Postgres-backed versioned cache instead.
+  if(method==='getDashboardBootstrap')return 15000;
+  if(method==='getTeamFilterOptions'||method==='getOpenFilterOptions')return 60000;
+  if(method==='getFilteredPeriodSummary')return 8000;
+  if(method==='getDashboardMeta')return 10000;
   return 0;
 }
 
@@ -88,7 +172,7 @@ Deno.serve(async (req:Request)=>{
       ok:true,
       service:'dashboard-rpc',
       provider:'Supabase',
-      version:2,
+      version:4,
       methods:Object.keys(handlers).length
     },200,requestId);
   }
