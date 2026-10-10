@@ -251,17 +251,34 @@ function ttlFor(method:string){
   return 0;
 }
 
-async function bridgeTokenOk(req:Request){
-  const expected=String(Deno.env.get('DASHBOARD_RPC_TOKEN')||'');
-  if(!expected)return false;
+let bridgeTokenHashCache:{value:string,expires:number}|null=null;
 
+async function bridgeTokenOk(req:Request){
   const supplied=String(req.headers.get('x-dashboard-token')||'');
   if(!supplied)return false;
 
+  let expectedHash='';
+  const now=Date.now();
+
+  if(bridgeTokenHashCache&&bridgeTokenHashCache.expires>now){
+    expectedHash=bridgeTokenHashCache.value;
+  }else{
+    const rows=await tursoSelect(
+      "SELECT token_sha256 FROM private.dashboard_rpc_auth WHERE id='gas-bridge' LIMIT 1"
+    ).catch(()=>[]);
+    expectedHash=String(rows?.[0]?.token_sha256||'');
+    if(expectedHash){
+      bridgeTokenHashCache={value:expectedHash,expires:now+300000};
+    }
+  }
+
+  if(!expectedHash)return false;
+  const suppliedHash=await hashText(supplied);
+
   const enc=new TextEncoder();
   const [a,b]=await Promise.all([
-    crypto.subtle.digest('SHA-256',enc.encode(expected)),
-    crypto.subtle.digest('SHA-256',enc.encode(supplied))
+    crypto.subtle.digest('SHA-256',enc.encode(expectedHash)),
+    crypto.subtle.digest('SHA-256',enc.encode(suppliedHash))
   ]);
   const aa=new Uint8Array(a),bb=new Uint8Array(b);
   if(aa.length!==bb.length)return false;
@@ -289,7 +306,7 @@ Deno.serve(async (req:Request)=>{
       ok:true,
       service:'dashboard-rpc',
       provider:'Supabase',
-      version:7,
+      version:8,
       methods:Object.keys(handlers).length
     },200,requestId);
   }
