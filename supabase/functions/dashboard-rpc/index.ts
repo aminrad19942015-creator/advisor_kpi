@@ -96,6 +96,111 @@ async function cachedPeriodInitial(period:string,filters:any){
   return cached.value;
 }
 
+async function dashboardDiagnostics(){
+  const [metaRows,countRows,stagingRows,cacheRows]=await Promise.all([
+    tursoSelect(`
+      SELECT key,value
+      FROM dashboard_meta
+      WHERE key IN (
+        'data_version','last_sync_at','crm_shadow_last_sync_at','crm_shadow_row_count',
+        'crm_activity_last_sync_at','crm_activity_lead_opp_last_sync_at',
+        'crm_activity_calls_last_sync_at','crm_activity_tickets_last_sync_at',
+        'crm_activity_counts','crm_activity_range_start','crm_activity_range_end'
+      )
+    `),
+    tursoSelect(`
+      SELECT
+        (SELECT COUNT(*) FROM team_members) AS team_members,
+        (SELECT COUNT(*) FROM open_leads_crm_shadow) AS open_leads,
+        (SELECT COUNT(*) FROM daily_leads) AS daily_leads,
+        (SELECT COUNT(*) FROM weekly_leads) AS weekly_leads,
+        (SELECT COUNT(*) FROM monthly_leads) AS monthly_leads,
+        (SELECT COUNT(*) FROM daily_opportunities) AS daily_opportunities,
+        (SELECT COUNT(*) FROM weekly_opportunities) AS weekly_opportunities,
+        (SELECT COUNT(*) FROM monthly_opportunities) AS monthly_opportunities,
+        (SELECT COUNT(*) FROM daily_calls) AS daily_calls,
+        (SELECT COUNT(*) FROM weekly_calls) AS weekly_calls,
+        (SELECT COUNT(*) FROM monthly_calls) AS monthly_calls,
+        (SELECT COUNT(*) FROM daily_tickets) AS daily_tickets,
+        (SELECT COUNT(*) FROM weekly_tickets) AS weekly_tickets,
+        (SELECT COUNT(*) FROM monthly_tickets) AS monthly_tickets
+    `),
+    tursoSelect(`
+      SELECT COUNT(*) AS chunks,MIN(created_at) AS oldest,MAX(created_at) AS newest
+      FROM crm_daily_activity_chunks
+    `).catch(()=>[]),
+    tursoSelect(`
+      SELECT COUNT(*) AS entries,
+             SUM(CASE WHEN expires_at<=now() THEN 1 ELSE 0 END) AS expired,
+             MIN(created_at) AS oldest,
+             MAX(created_at) AS newest
+      FROM private.dashboard_rpc_cache
+    `).catch(()=>[])
+  ]);
+
+  const meta:any=Object.fromEntries((metaRows||[]).map((r:any)=>[String(r.key),String(r.value||'')]));
+  const counts:any=countRows?.[0]||{};
+  const n=(k:string)=>Number(counts[k]||0);
+  const consistency={
+    leads:n('daily_leads')<=n('weekly_leads')&&n('weekly_leads')<=n('monthly_leads'),
+    opportunities:n('daily_opportunities')<=n('weekly_opportunities')&&n('weekly_opportunities')<=n('monthly_opportunities'),
+    calls:n('daily_calls')<=n('weekly_calls')&&n('weekly_calls')<=n('monthly_calls'),
+    tickets:n('daily_tickets')<=n('weekly_tickets')&&n('weekly_tickets')<=n('monthly_tickets')
+  };
+
+  const componentTimestamps={
+    leadOpportunity:meta.crm_activity_lead_opp_last_sync_at||'',
+    calls:meta.crm_activity_calls_last_sync_at||'',
+    tickets:meta.crm_activity_tickets_last_sync_at||''
+  };
+
+  const componentTrackingReady=Object.values(componentTimestamps).every(Boolean);
+  const currentActivityCounts=(()=>{
+    try{return JSON.parse(meta.crm_activity_counts||'{}')}catch{return {}}
+  })();
+
+  return {
+    ok:
+      n('team_members')>0 &&
+      n('open_leads')>0 &&
+      Object.values(consistency).every(Boolean),
+    provider:'Supabase',
+    checkedAt:new Date().toISOString(),
+    meta:{
+      dataVersion:meta.data_version||'',
+      lastSyncAt:meta.last_sync_at||'',
+      openLastSyncAt:meta.crm_shadow_last_sync_at||'',
+      activityLastSyncAt:meta.crm_activity_last_sync_at||'',
+      activityRange:{
+        start:meta.crm_activity_range_start||'',
+        end:meta.crm_activity_range_end||''
+      },
+      componentTimestamps,
+      componentTrackingReady,
+      activityCounts:currentActivityCounts
+    },
+    counts:Object.fromEntries(Object.entries(counts).map(([k,v])=>[k,Number(v||0)])),
+    consistency,
+    staging:{
+      chunks:Number(stagingRows?.[0]?.chunks||0),
+      oldest:stagingRows?.[0]?.oldest||null,
+      newest:stagingRows?.[0]?.newest||null
+    },
+    cache:{
+      entries:Number(cacheRows?.[0]?.entries||0),
+      expired:Number(cacheRows?.[0]?.expired||0),
+      oldest:cacheRows?.[0]?.oldest||null,
+      newest:cacheRows?.[0]?.newest||null
+    },
+    migration:{
+      componentTrackingReady,
+      note:componentTrackingReady
+        ? 'Activity component timestamps are active.'
+        : 'Component timestamps will appear after the new serialized morning Connector completes each activity family.'
+    }
+  };
+}
+
 const handlers:Record<string,Handler>={
   getDashboardBootstrap: async ()=>getDashboardBootstrap(),
   getDashboardInitialPayload: async ([openFilters])=>cachedInitialPayload(openFilters||{}),
@@ -115,6 +220,7 @@ const handlers:Record<string,Handler>={
   getRepeatedCallDetails: async ([period,filters])=>getRepeatedCallDetails(period,filters||{}),
   getAdvisorTrend: async ([period,advisor])=>getAdvisorTrend(period,advisor),
   getDashboardMeta: async ()=>getMeta(),
+  getDashboardDiagnostics: async ()=>dashboardDiagnostics(),
   getExportChunk: async ([tab,dataset,filters,offset,limit])=>{
     const t=String(tab||'');
     if(t==='open'){
@@ -183,7 +289,7 @@ Deno.serve(async (req:Request)=>{
       ok:true,
       service:'dashboard-rpc',
       provider:'Supabase',
-      version:5,
+      version:6,
       methods:Object.keys(handlers).length
     },200,requestId);
   }
