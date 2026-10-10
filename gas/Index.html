@@ -1,44 +1,48 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
-  <base target="_top">
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>داشبورد عملکرد مشاوران</title>
-  <style>
-    body{font-family:Arial,sans-serif;background:#071522;color:#eef7ff;margin:0;padding:32px}
-    .card{max-width:760px;margin:40px auto;background:#102336;border:1px solid #23415d;border-radius:18px;padding:24px}
-    h1{margin-top:0}.muted{color:#9db2c6}.ok{color:#74e1c4}.bad{color:#ff9f9f}
-    button{background:#2d79b8;color:white;border:0;border-radius:10px;padding:10px 16px;cursor:pointer}
-    pre{white-space:pre-wrap;background:#071522;padding:14px;border-radius:10px}
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>داشبورد تعاملی عملکرد واحد مشاورین</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<?!= include('Styles'); ?>
 </head>
 <body>
-  <div class="card">
-    <h1>زیرساخت نسخه Google Apps Script</h1>
-    <p class="muted">این صفحه فعلاً برای تست اتصال GAS به Supabase است. UI کامل داشبورد در مرحله بعد روی همین Web App قرار می‌گیرد.</p>
-    <button onclick="runHealth()">تست اتصال</button>
-    <pre id="out">آماده تست</pre>
+<div id="loadingScreen" class="loading-screen">
+  <div class="loading-card">
+    <div class="loading-spinner"></div>
+    <h2>در حال آماده‌سازی داشبورد</h2>
+    <p>داده‌های مدیریتی از پایگاه داده دریافت می‌شوند...</p>
   </div>
-  <script>
-    function runHealth(){
-      const out=document.getElementById('out');
-      out.textContent='در حال تست...';
-      google.script.run
-        .withFailureHandler(err=>out.textContent='ERROR\n'+(err&&err.message?err.message:err))
-        .withSuccessHandler(async health=>{
-          out.textContent='GAS HEALTH\n'+JSON.stringify(health,null,2)+'\n\nدر حال تست Bootstrap...';
-          google.script.run
-            .withFailureHandler(err=>out.textContent+='\n\nBOOTSTRAP ERROR\n'+(err&&err.message?err.message:err))
-            .withSuccessHandler(data=>out.textContent+='\n\nBOOTSTRAP OK\n'+JSON.stringify({
-              meta:data&&data.meta,
-              teamRows:data&&data.team&&data.team.rows?data.team.rows.length:null,
-              openTotal:data&&data.open&&data.open.kpis?data.open.kpis.total:null
-            },null,2))
-            .getDashboardBootstrap();
-        })
-        .getGasHealth();
-    }
-  </script>
+</div>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><div class="logo">م</div><div><h1>واحد مشاورین</h1><small>داشبورد مدیریتی</small></div></div>
+  <div class="nav-title">داشبورد</div>
+  <button class="nav-item active" data-page="teamPage">◈ نمای کلی تیم</button>
+  <button class="nav-item" data-page="openPage">◉ سرنخ‌های باز روزانه</button>
+  <button class="nav-item" data-page="dailyPage">▣ فعالیت دیروز</button>
+  <button class="nav-item" data-page="weeklyPage">▤ فعالیت هفته</button>
+  <button class="nav-item" data-page="monthlyPage">▥ فعالیت ماهانه</button>
+  <div class="nav-title">منبع داده</div>
+  <div class="data-box online-source">
+    <h3>پایگاه داده آنلاین</h3>
+    <p>داده‌ها از Supabase خوانده می‌شوند.</p>
+    <div class="sync-line"><span>آخرین همگام‌سازی</span><b id="lastSyncText">—</b></div>
+    <div class="sync-line"><span>نسخه داده</span><b id="dataVersionText">—</b></div>
+  </div>
+</aside>
+<main class="main">
+<section id="teamPage" class="page active"></section>
+<section id="openPage" class="page"></section>
+<section id="dailyPage" class="page"></section>
+<section id="weeklyPage" class="page"></section>
+<section id="monthlyPage" class="page"></section>
+</main>
+</div>
+<div class="toast" id="toast"></div>
+<?!= include('Scripts'); ?>
 </body>
 </html>
