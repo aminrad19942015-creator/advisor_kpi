@@ -30,7 +30,7 @@ function getGasHealth() {
   };
 }
 
-function setInitialConfig(functionUrl, anonKey) {
+function setInitialConfig(functionUrl, anonKey, bridgeToken) {
   if (!functionUrl || !/^https:\/\//i.test(String(functionUrl))) {
     throw new Error('Supabase Function URL is invalid.');
   }
@@ -38,10 +38,13 @@ function setInitialConfig(functionUrl, anonKey) {
     throw new Error('Supabase anon key is invalid.');
   }
 
-  PropertiesService.getScriptProperties().setProperties({
+  const values = {
     [GAS_CONFIG.FUNCTION_URL_PROPERTY]: String(functionUrl).trim(),
     [GAS_CONFIG.ANON_KEY_PROPERTY]: String(anonKey).trim()
-  }, true);
+  };
+  if (bridgeToken) values[GAS_CONFIG.BRIDGE_TOKEN_PROPERTY] = String(bridgeToken).trim();
+
+  PropertiesService.getScriptProperties().setProperties(values, true);
 
   return getGasHealth();
 }
@@ -178,14 +181,16 @@ function fetchDashboardRpc_(method, args) {
       const message = body && body.error ? body.error : ('Dashboard RPC HTTP ' + status);
       const retryable = status === 408 || status === 429 || status >= 500;
       lastError = new Error(message + ' [requestId=' + requestId + ']');
+      lastError.retryable = retryable;
 
       if (!retryable || attempt === GAS_CONFIG.MAX_RETRIES) throw lastError;
     } catch (err) {
       lastError = err;
+      if (err && err.retryable === false) throw err;
       if (attempt === GAS_CONFIG.MAX_RETRIES) throw err;
     }
 
-    Utilities.sleep(250 * attempt);
+    Utilities.sleep(250 * Math.pow(2, attempt - 1));
   }
 
   throw lastError || new Error('Dashboard RPC failed.');
