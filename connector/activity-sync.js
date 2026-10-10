@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
 const CRM_ORIGIN = 'https://mxrm.emofid.com';
-const shadowUrl = process.env.DASHBOARD_API_URL || 'https://advisor-kpi.vercel.app/api/crm-shadow';
+const shadowUrl = process.env.DASHBOARD_API_URL || 'https://tdsqkxyqmebyufcmskkm.supabase.co/functions/v1/connector-api/crm-shadow';
 const API_URL = process.env.DASHBOARD_ACTIVITY_API_URL || shadowUrl.replace(/\/crm-shadow\/?$/,'/crm-activity');
 const username = (process.env.CRM_USERNAME || '').trim();
 const password = process.env.CRM_PASSWORD || '';
