@@ -4,6 +4,7 @@ const { chromium } = require('playwright');
 const { loadCrmConfig } = require('./config-client');
 const { writeSnapshot } = require('./local-backup');
 const { processPendingCommand } = require('./command-client');
+const { dashboardRequest } = require('./dashboard-http');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
 let CRM_ORIGIN = 'https://mxrm.emofid.com';
@@ -166,17 +167,17 @@ function normalize(rows) {
 }
 
 async function api(body) {
-  const response = await fetch(API_URL, {
+  const response = await dashboardRequest(API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'x-crm-connector-token': connectorToken
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    timeoutMs: 60000
   });
-  const text = await response.text();
-  if (!response.ok) throw new Error('Dashboard API HTTP ' + response.status + ': ' + text);
-  return JSON.parse(text);
+  if (!response.ok) throw new Error('Dashboard API HTTP ' + response.status + ': ' + response.text);
+  return JSON.parse(response.text);
 }
 
 async function pushShadow(rows, sourceCheckedAt) {
