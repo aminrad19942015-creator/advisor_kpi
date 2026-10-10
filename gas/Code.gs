@@ -490,3 +490,21 @@ function adminRequestRecovery(token) {
 function adminRunQa(token) {
   return adminRpc_(token, 'runQa', []);
 }
+
+
+function gasInvoke(action, args) {
+  const a = Array.isArray(args) ? args : [];
+  switch (String(action || '')) {
+    case 'adminLogin': return adminLogin(a[0]);
+    case 'adminGetOverview': return adminGetOverview(a[0]);
+    case 'adminListTeamMembers': return adminListTeamMembers(a[0]);
+    case 'adminAddTeamMember': return adminAddTeamMember(a[0], a[1]);
+    case 'adminUpdateTeamMembers': return adminUpdateTeamMembers(a[0], a[1]);
+    case 'adminDeleteTeamMember': return adminDeleteTeamMember(a[0], a[1]);
+    case 'adminGetCrmConfig': return adminGetCrmConfig(a[0]);
+    case 'adminSaveCrmConfig': return adminSaveCrmConfig(a[0], a[1]);
+    case 'adminRequestRecovery': return adminRequestRecovery(a[0]);
+    case 'adminRunQa': return adminRunQa(a[0]);
+    default: throw new Error('Unknown GAS action: ' + action);
+  }
+}
