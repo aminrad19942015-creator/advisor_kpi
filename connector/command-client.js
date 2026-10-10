@@ -1,12 +1,13 @@
+const { dashboardRequest } = require('./dashboard-http');
 const {restoreAll}=require('./recovery-lib');
 
 function commandUrl(){
- const shadow=process.env.DASHBOARD_API_URL||'https://advisor-kpi.vercel.app/api/crm-shadow';
+ const shadow=process.env.DASHBOARD_API_URL||'https://advisor-kpi-production.up.railway.app/api/crm-shadow';
  return process.env.DASHBOARD_CONNECTOR_COMMAND_URL||shadow.replace(/\/crm-shadow\/?$/,'/connector-command');
 }
 async function request(url,token,options={}){
- const r=await fetch(url,{...options,headers:{'content-type':'application/json','x-crm-connector-token':token,...(options.headers||{})},signal:AbortSignal.timeout(30000)});
- const t=await r.text();if(!r.ok)throw new Error('Connector command HTTP '+r.status+': '+t);return JSON.parse(t);
+ const r=await dashboardRequest(url,{...options,headers:{'content-type':'application/json','x-crm-connector-token':token,...(options.headers||{})},timeoutMs:30000});
+ const t=r.text;if(!r.ok)throw new Error('Connector command HTTP '+r.status+': '+t);return JSON.parse(t);
 }
 async function processPendingCommand(token){
  const url=commandUrl(),j=await request(url,token);
