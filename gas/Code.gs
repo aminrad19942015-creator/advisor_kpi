@@ -316,3 +316,14 @@ function clearDashboardCache() {
 
   return { ok: true };
 }
+
+
+function getExportChunk(tab, dataset, filters, offset, limit) {
+  return fetchDashboardRpc_('getExportChunk', [
+    String(tab || ''),
+    String(dataset || ''),
+    filters || {},
+    Math.max(0, Number(offset || 0)),
+    Math.max(1, Math.min(10000, Number(limit || 10000)))
+  ]);
+}
