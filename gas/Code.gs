@@ -1,6 +1,5 @@
 const GAS_CONFIG = {
   FUNCTION_URL_PROPERTY: 'SUPABASE_DASHBOARD_RPC_URL',
-  ANON_KEY_PROPERTY: 'SUPABASE_ANON_KEY',
   BRIDGE_TOKEN_PROPERTY: 'DASHBOARD_RPC_TOKEN',
   CACHE_CHUNK_CHARS: 28000,
   CACHE_DEFAULT_TTL_SECONDS: 45,
@@ -24,27 +23,23 @@ function getGasHealth() {
     ok: true,
     runtime: 'Google Apps Script',
     functionUrlConfigured: !!props.getProperty(GAS_CONFIG.FUNCTION_URL_PROPERTY),
-    anonKeyConfigured: !!props.getProperty(GAS_CONFIG.ANON_KEY_PROPERTY),
     bridgeTokenConfigured: !!props.getProperty(GAS_CONFIG.BRIDGE_TOKEN_PROPERTY),
     now: new Date().toISOString()
   };
 }
 
-function setInitialConfig(functionUrl, anonKey, bridgeToken) {
+function setInitialConfig(functionUrl, bridgeToken) {
   if (!functionUrl || !/^https:\/\//i.test(String(functionUrl))) {
     throw new Error('Supabase Function URL is invalid.');
   }
-  if (!anonKey || String(anonKey).length < 20) {
-    throw new Error('Supabase anon key is invalid.');
+  if (!bridgeToken || String(bridgeToken).length < 32) {
+    throw new Error('Dashboard bridge token is invalid.');
   }
 
-  const values = {
+  PropertiesService.getScriptProperties().setProperties({
     [GAS_CONFIG.FUNCTION_URL_PROPERTY]: String(functionUrl).trim(),
-    [GAS_CONFIG.ANON_KEY_PROPERTY]: String(anonKey).trim()
-  };
-  if (bridgeToken) values[GAS_CONFIG.BRIDGE_TOKEN_PROPERTY] = String(bridgeToken).trim();
-
-  PropertiesService.getScriptProperties().setProperties(values, true);
+    [GAS_CONFIG.BRIDGE_TOKEN_PROPERTY]: String(bridgeToken).trim()
+  }, true);
 
   return getGasHealth();
 }
@@ -52,15 +47,14 @@ function setInitialConfig(functionUrl, anonKey, bridgeToken) {
 function rpcConfig_() {
   const props = PropertiesService.getScriptProperties();
   const url = props.getProperty(GAS_CONFIG.FUNCTION_URL_PROPERTY);
-  const anonKey = props.getProperty(GAS_CONFIG.ANON_KEY_PROPERTY);
+  const bridgeToken = props.getProperty(GAS_CONFIG.BRIDGE_TOKEN_PROPERTY);
 
-  if (!url || !anonKey) {
-    throw new Error('GAS is not configured. Set SUPABASE_DASHBOARD_RPC_URL and SUPABASE_ANON_KEY in Script Properties.');
+  if (!url || !bridgeToken) {
+    throw new Error('GAS is not configured. Set SUPABASE_DASHBOARD_RPC_URL and DASHBOARD_RPC_TOKEN in Script Properties.');
   }
   return {
     url: url,
-    anonKey: anonKey,
-    bridgeToken: props.getProperty(GAS_CONFIG.BRIDGE_TOKEN_PROPERTY) || ''
+    bridgeToken: bridgeToken
   };
 }
 
@@ -152,13 +146,10 @@ function fetchDashboardRpc_(method, args) {
       const response = UrlFetchApp.fetch(cfg.url, {
         method: 'post',
         contentType: 'application/json',
-        headers: Object.assign({
-          Authorization: 'Bearer ' + cfg.anonKey,
-          apikey: cfg.anonKey,
-          'x-request-id': requestId
-        }, cfg.bridgeToken ? {
+        headers: {
+          'x-request-id': requestId,
           'x-dashboard-token': cfg.bridgeToken
-        } : {}),
+        },
         payload: payload,
         muteHttpExceptions: true,
         followRedirects: true
