@@ -8,6 +8,9 @@ This folder contains the new Google Apps Script runtime for the Advisor KPI dash
 CRM / Windows Connector
         |
         v
+Supabase Edge Function: connector-api
+        |
+        v
 Supabase PostgreSQL  <-- authoritative operational snapshots
         |
         v
@@ -99,6 +102,7 @@ Implemented:
 - retry only for transient HTTP errors
 - chunked Script Cache + lock to reduce stampedes
 - Supabase `dashboard-rpc` Edge Function
+- Supabase `connector-api` Edge Function for Open Leads / Activity / Config / Commands
 - PostgreSQL-backed versioned cache
 - unique data guards + dashboard indexes
 - atomic activity batch replacement code
@@ -110,7 +114,7 @@ Still blocked on external/runtime access:
 - creation/deployment of the actual Apps Script project in the company Google Workspace account
 - setting Script Properties and the matching Supabase Edge secret
 - applying/verifying the new Connector schedule on the company workstation
-- switching Connector upload endpoints away from the current Vercel/Railway path
+- applying the prepared Connector endpoint cutover on the company workstation
 - end-to-end CRM test from the company network
 
 Implemented after the initial scaffold:
@@ -147,3 +151,46 @@ The result checks both:
 - Supabase dashboard diagnostics
 
 Diagnostics include aggregate row counts, Daily/Weekly/Monthly consistency, Open Leads availability, staging state, cache state, and the three Activity component timestamps. No customer-level rows are returned by the diagnostic endpoint.
+
+
+## Supabase connector cutover
+
+Prepared endpoint base:
+
+```
+https://tdsqkxyqmebyufcmskkm.supabase.co/functions/v1/connector-api
+```
+
+Routes:
+
+- `/crm-shadow`
+- `/crm-activity`
+- `/crm-config`
+- `/connector-command`
+
+The Edge Function is custom-authenticated with `CRM_CONNECTOR_TOKEN` and is fail-closed when that secret is not configured.
+
+Prepared workstation scripts:
+
+- `connector/cutover-supabase.ps1`
+  - backs up `.env.local`
+  - rewrites only dashboard endpoint variables
+  - preserves CRM credentials
+  - runs endpoint verification
+- `connector/verify-supabase-endpoints.ps1`
+  - verifies all four Supabase routes using the existing Connector token
+
+The source branch already defaults Connector traffic to Supabase. It must not be cut over on the workstation until the matching Supabase secret is configured.
+
+## Morning failure policy
+
+The 07:00 runner now treats Lead/Opportunity, Calls and Tickets as independent update components after the Open Leads step.
+
+If one Activity component fails:
+- the remaining components still run,
+- successful components keep their new snapshots,
+- the failed component keeps its last successful snapshot,
+- the Windows task exits failed at the end so monitoring still sees the problem,
+- the overall Activity freshness timestamp resolves to the oldest successful component timestamp.
+
+This avoids one CRM family blocking the other Activity families while preserving last-known-good data.
