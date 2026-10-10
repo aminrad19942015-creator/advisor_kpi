@@ -124,7 +124,15 @@ async function replaceTarget(target:string,rows:any[]){
 }
 
 
-async function replaceDatasetFromStaging(batchId:string,dataset:string,target:string,expectedRows:number){
+type PreparedDataset={
+  dataset:string;
+  target:string;
+  stage:string;
+  columns:string[];
+  count:number;
+};
+
+async function prepareDatasetFromStaging(batchId:string,dataset:string,target:string,expectedRows:number):Promise<PreparedDataset>{
   const countRows=await tursoSelect(
     `SELECT COALESCE(SUM(jsonb_array_length(payload_json::jsonb)),0) AS n
      FROM ${ident(STAGING)} WHERE batch_id=? AND dataset=?`,
@@ -169,19 +177,102 @@ async function replaceDatasetFromStaging(batchId:string,dataset:string,target:st
         FROM ${ident(STAGING)} s
         CROSS JOIN LATERAL jsonb_array_elements(s.payload_json::jsonb) j
         WHERE s.batch_id=? AND s.dataset=?${teamFilter}
-      `,args:[batchId,dataset]},
-      {sql:'BEGIN IMMEDIATE'},
-      {sql:`DELETE FROM ${qt}`},
-      {sql:`INSERT INTO ${qt}(${colSql}) SELECT ${colSql} FROM ${qs}`},
-      {sql:`DROP TABLE ${qs}`},
-      {sql:'COMMIT'}
+      `,args:[batchId,dataset]}
     ]);
-    const finalRows=await tursoSelect(`SELECT COUNT(*) count FROM ${qt}`);
-    return Number(finalRows?.[0]?.count||0);
+
+    const staged=await tursoSelect(`SELECT COUNT(*) AS n FROM ${qs}`);
+    return {
+      dataset,
+      target,
+      stage,
+      columns:colNames,
+      count:Number(staged?.[0]?.n||0)
+    };
   }catch(e){
     await tursoBatch([{sql:`DROP TABLE IF EXISTS ${qs}`}]).catch(()=>{});
     throw e;
   }
+}
+
+function assertPeriodCountConsistency(prepared:PreparedDataset[]){
+  const byDataset=new Map(prepared.map(x=>[x.dataset,x]));
+  const families=[
+    ['leads','weekly_leads','monthly_leads'],
+    ['opportunities','weekly_opportunities','monthly_opportunities'],
+    ['calls','weekly_calls','monthly_calls'],
+    ['tickets','weekly_tickets','monthly_tickets']
+  ];
+
+  for(const [dailyKey,weeklyKey,monthlyKey] of families){
+    const daily=byDataset.get(dailyKey);
+    const weekly=byDataset.get(weeklyKey);
+    const monthly=byDataset.get(monthlyKey);
+    if(!daily||!weekly||!monthly) continue;
+
+    if(daily.count>weekly.count || weekly.count>monthly.count){
+      throw new Error(
+        `CRM activity period counts are inconsistent for ${dailyKey}: daily=${daily.count}, weekly=${weekly.count}, monthly=${monthly.count}.`
+      );
+    }
+  }
+}
+
+async function cleanupPrepared(prepared:PreparedDataset[]){
+  for(const p of prepared){
+    await tursoBatch([{sql:`DROP TABLE IF EXISTS ${ident(p.stage)}`}]).catch(()=>{});
+  }
+}
+
+async function activityMetaForBatch(requestedKeys:string[],counts:any,sourceCheckedAt:string|undefined,range:any){
+  const metaRows=await tursoSelect(
+    "SELECT key,value FROM dashboard_meta WHERE key IN ('crm_activity_last_sync_at','crm_activity_lead_opp_last_sync_at','crm_activity_calls_last_sync_at','crm_activity_tickets_last_sync_at','crm_activity_counts')"
+  ).catch(()=>[]);
+  const current:any=Object.fromEntries(metaRows.map((r:any)=>[r.key,r.value]));
+
+  const now=new Date().toISOString();
+  const component:any={
+    leadOpp:String(current.crm_activity_lead_opp_last_sync_at||''),
+    calls:String(current.crm_activity_calls_last_sync_at||''),
+    tickets:String(current.crm_activity_tickets_last_sync_at||'')
+  };
+
+  if(requestedKeys.some(k=>['leads','weekly_leads','monthly_leads','opportunities','weekly_opportunities','monthly_opportunities'].includes(k))){
+    component.leadOpp=now;
+  }
+  if(requestedKeys.some(k=>['calls','weekly_calls','monthly_calls'].includes(k))){
+    component.calls=now;
+  }
+  if(requestedKeys.some(k=>['tickets','weekly_tickets','monthly_tickets'].includes(k))){
+    component.tickets=now;
+  }
+
+  let mergedCounts:any={};
+  try{ mergedCounts=JSON.parse(String(current.crm_activity_counts||'{}')); }catch{}
+  mergedCounts={...mergedCounts,...counts};
+
+  const componentTimes=[component.leadOpp,component.calls,component.tickets]
+    .filter(Boolean)
+    .map((raw:string)=>({raw,time:Date.parse(raw)}))
+    .filter((x:any)=>Number.isFinite(x.time));
+
+  const completeSyncAt=componentTimes.length===3
+    ? componentTimes.sort((a:any,b:any)=>a.time-b.time)[0].raw
+    : String(current.crm_activity_last_sync_at||now);
+
+  return {
+    now,
+    completeSyncAt,
+    rows:[
+      ['crm_activity_last_sync_at',completeSyncAt],
+      ['crm_activity_lead_opp_last_sync_at',component.leadOpp],
+      ['crm_activity_calls_last_sync_at',component.calls],
+      ['crm_activity_tickets_last_sync_at',component.tickets],
+      ['crm_activity_source_checked_at',sourceCheckedAt||now],
+      ['crm_activity_range_start',String(range?.start||'')],
+      ['crm_activity_range_end',String(range?.end||'')],
+      ['crm_activity_counts',JSON.stringify(mergedCounts)]
+    ]
+  };
 }
 
 async function replaceCallsFromStaging(batchId:string,dataset:string,target:string,expectedRows:number){
@@ -253,27 +344,80 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   await ensureCrmActivityTables();
 
   const requestedKeys=Object.keys(expected||{}).filter(key=>TARGETS[key]);
-  if(databaseProvider()==='Supabase' && requestedKeys.length){
-    const counts:any={};
-    for(const key of requestedKeys){
-      counts[key]=await replaceDatasetFromStaging(batchId,key,TARGETS[key],Number(expected?.[key]||0));
-    }
+  if(!requestedKeys.length) throw new Error('CRM activity finalize has no datasets.');
 
-    const now=new Date().toISOString();
-    const meta=[
-      ['crm_activity_last_sync_at',now],
-      ['crm_activity_source_checked_at',sourceCheckedAt||now],
-      ['crm_activity_range_start',String(range?.start||'')],
-      ['crm_activity_range_end',String(range?.end||'')],
-      ['crm_activity_counts',JSON.stringify(counts)]
-    ];
-    await tursoBatch(meta.map(([key,value])=>({
-      sql:"INSERT INTO dashboard_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-      args:[key,value]
-    })));
-    await tursoBatch([{sql:`DELETE FROM ${ident(STAGING)} WHERE batch_id=?`,args:[batchId]}]);
-    return {batchId,counts,lastSyncAt:now,sourceCheckedAt:sourceCheckedAt||now,range};
+  if(databaseProvider()==='Supabase'){
+    const prepared:PreparedDataset[]=[];
+    try{
+      for(const key of requestedKeys){
+        prepared.push(await prepareDatasetFromStaging(
+          batchId,
+          key,
+          TARGETS[key],
+          Number(expected?.[key]||0)
+        ));
+      }
+
+      assertPeriodCountConsistency(prepared);
+
+      // If an entire requested 3-period family unexpectedly becomes empty
+      // while the current monthly table is populated, preserve the last good
+      // snapshot instead of silently replacing it with an empty dataset.
+      const byDataset=new Map(prepared.map(x=>[x.dataset,x]));
+      const familyMonthly=[
+        ['leads','weekly_leads','monthly_leads'],
+        ['opportunities','weekly_opportunities','monthly_opportunities'],
+        ['calls','weekly_calls','monthly_calls'],
+        ['tickets','weekly_tickets','monthly_tickets']
+      ];
+      for(const [dailyKey,weeklyKey,monthlyKey] of familyMonthly){
+        const d=byDataset.get(dailyKey),w=byDataset.get(weeklyKey),m=byDataset.get(monthlyKey);
+        if(!d||!w||!m||d.count||w.count||m.count) continue;
+        const old=await tursoSelect(`SELECT COUNT(*) AS n FROM ${ident(TARGETS[monthlyKey])}`);
+        if(Number(old?.[0]?.n||0)>0){
+          throw new Error(`Refusing to replace non-empty ${monthlyKey} history with an all-zero CRM snapshot.`);
+        }
+      }
+
+      const counts:any={};
+      for(const p of prepared) counts[p.dataset]=p.count;
+      const meta=await activityMetaForBatch(requestedKeys,counts,sourceCheckedAt,range);
+
+      const tx:any[]=[{sql:'BEGIN IMMEDIATE'}];
+      for(const p of prepared){
+        const qt=ident(p.target),qs=ident(p.stage),cols=p.columns.map(ident).join(',');
+        tx.push({sql:`DELETE FROM ${qt}`});
+        tx.push({sql:`INSERT INTO ${qt}(${cols}) SELECT ${cols} FROM ${qs}`});
+      }
+      for(const [key,value] of meta.rows){
+        if(!value && ['crm_activity_lead_opp_last_sync_at','crm_activity_calls_last_sync_at','crm_activity_tickets_last_sync_at'].includes(key)) continue;
+        tx.push({
+          sql:"INSERT INTO dashboard_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          args:[key,value]
+        });
+      }
+      for(const p of prepared) tx.push({sql:`DROP TABLE ${ident(p.stage)}`});
+      tx.push({sql:'COMMIT'});
+
+      // One transaction replaces every table in this connector batch and its
+      // metadata together. Any uniqueness/type error rolls the whole batch back.
+      await tursoBatch(tx);
+
+      await tursoBatch([{sql:`DELETE FROM ${ident(STAGING)} WHERE batch_id=?`,args:[batchId]}]);
+      return {
+        batchId,
+        counts,
+        lastSyncAt:meta.completeSyncAt,
+        componentFinishedAt:meta.now,
+        sourceCheckedAt:sourceCheckedAt||meta.now,
+        range
+      };
+    }catch(e){
+      await cleanupPrepared(prepared);
+      throw e;
+    }
   }
+
   const chunks=await tursoSelect(`SELECT dataset,seq,payload_json FROM ${ident(STAGING)} WHERE batch_id=? ORDER BY dataset,seq`,[batchId]);
   const grouped:Record<string,any[]>={leads:[],weekly_leads:[],monthly_leads:[],opportunities:[],weekly_opportunities:[],monthly_opportunities:[],calls:[],weekly_calls:[],monthly_calls:[],tickets:[],weekly_tickets:[],monthly_tickets:[]};
   for(const chunk of chunks){
@@ -283,9 +427,7 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
     if(!Array.isArray(parsed)) throw new Error('Invalid CRM activity payload.');
     grouped[dataset].push(...parsed);
   }
-  const requested=Object.keys(expected||{}).filter(key=>TARGETS[key]);
-  if(!requested.length) throw new Error('CRM activity finalize has no datasets.');
-  for(const key of requested){
+  for(const key of requestedKeys){
     const want=Number(expected?.[key]||0);
     if(grouped[key].length!==want) throw new Error(`CRM activity row-count mismatch for ${key}: expected ${want}, received ${grouped[key].length}.`);
   }
@@ -293,7 +435,7 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   const teamRows=await tursoSelect('SELECT name FROM team_members');
   const team=new Set(teamRows.map((r:any)=>String(r.name||'').trim()).filter(Boolean));
   const filtered:Record<string,any[]>={};
-  for(const key of requested){
+  for(const key of requestedKeys){
     if(key==='opportunities'||key==='weekly_opportunities'||key==='monthly_opportunities'||key==='calls'||key==='weekly_calls'||key==='monthly_calls'||key==='tickets'||key==='weekly_tickets'||key==='monthly_tickets'){
       filtered[key]=grouped[key];
       continue;
@@ -303,21 +445,17 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   }
 
   const counts:any={};
-  for(const key of requested) counts[key]=await replaceTarget(TARGETS[key],filtered[key]);
+  for(const key of requestedKeys) counts[key]=await replaceTarget(TARGETS[key],filtered[key]);
 
   const now=new Date().toISOString();
-  const meta=[
-    ['crm_activity_last_sync_at',now],
-    ['crm_activity_source_checked_at',sourceCheckedAt||now],
-    ['crm_activity_range_start',String(range?.start||'')],
-    ['crm_activity_range_end',String(range?.end||'')],
-    ['crm_activity_counts',JSON.stringify(counts)]
-  ];
-  await tursoBatch(meta.map(([key,value])=>({
-    sql:"INSERT INTO dashboard_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-    args:[key,value]
-  })));
-  await tursoBatch([{sql:`DELETE FROM ${ident(STAGING)} WHERE batch_id=?`,args:[batchId]}]);
+  await tursoBatch([
+    {sql:"INSERT INTO dashboard_meta(key,value) VALUES('crm_activity_last_sync_at',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",args:[now]},
+    {sql:"INSERT INTO dashboard_meta(key,value) VALUES('crm_activity_source_checked_at',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",args:[sourceCheckedAt||now]},
+    {sql:"INSERT INTO dashboard_meta(key,value) VALUES('crm_activity_range_start',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",args:[String(range?.start||'')]},
+    {sql:"INSERT INTO dashboard_meta(key,value) VALUES('crm_activity_range_end',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",args:[String(range?.end||'')]},
+    {sql:"INSERT INTO dashboard_meta(key,value) VALUES('crm_activity_counts',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",args:[JSON.stringify(counts)]},
+    {sql:`DELETE FROM ${ident(STAGING)} WHERE batch_id=?`,args:[batchId]}
+  ]);
   return {batchId,counts,lastSyncAt:now,sourceCheckedAt:sourceCheckedAt||now,range};
 }
 
