@@ -66,7 +66,7 @@ function periodFiltersAreInitial(filters:any){
 }
 
 async function cachedInitialPayload(openFilters:any){
-  const sourceVersion=await versionValue(['data_version','crm_shadow_last_sync_at']);
+  const sourceVersion=await versionValue(['data_version','crm_shadow_last_sync_at','admin_revision']);
   const hash=(await hashText(stable(openFilters||{}))).slice(0,24);
   const cached=await persistentCached(
     'dashboard-initial:'+hash,
@@ -88,7 +88,7 @@ async function cachedPeriodInitial(period:string,filters:any){
 
   if(!periodFiltersAreInitial(filters))return compute();
 
-  const sourceVersion=await versionValue(['data_version','crm_activity_last_sync_at']);
+  const sourceVersion=await versionValue(['data_version','crm_activity_last_sync_at','admin_revision']);
   const cached=await persistentCached(
     'period-initial:'+String(period||''),
     sourceVersion,
@@ -308,7 +308,7 @@ Deno.serve(async (req:Request)=>{
       ok:true,
       service:'dashboard-rpc',
       provider:'Supabase',
-      version:9,
+      version:10,
       methods:Object.keys(handlers).length
     },200,requestId);
   }
