@@ -1,9 +1,4 @@
-import crypto from 'node:crypto';
 import { tursoBatch, tursoSelect, tableColumns, databaseProvider } from './turso.ts';
-import { assertCrmConnectorToken } from './crm-shadow.ts';
-
-export { assertCrmConnectorToken };
-
 const STAGING='crm_daily_activity_chunks';
 const TARGETS:Record<string,string>={
   leads:'daily_leads',
