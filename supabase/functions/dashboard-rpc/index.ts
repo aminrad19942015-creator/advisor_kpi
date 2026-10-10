@@ -32,7 +32,9 @@ async function persistentCached(cacheKey:string,sourceVersion:string,ttlSeconds:
   ).catch(()=>[]);
 
   if(hit?.length){
-    return {value:hit[0].payload,cache:'postgres-hit'};
+    const raw=hit[0].payload;
+    const value=typeof raw==='string'?JSON.parse(raw):raw;
+    return {value,cache:'postgres-hit'};
   }
 
   const value=await compute();
@@ -40,7 +42,7 @@ async function persistentCached(cacheKey:string,sourceVersion:string,ttlSeconds:
 
   await tursoBatch([{
     sql:`INSERT INTO private.dashboard_rpc_cache(cache_key,payload,source_version,created_at,expires_at)
-         VALUES(?,?::jsonb,?,now(),?::timestamptz)
+         VALUES(?,(?::text)::jsonb,?,now(),?::timestamptz)
          ON CONFLICT(cache_key) DO UPDATE SET
            payload=excluded.payload,
            source_version=excluded.source_version,
@@ -306,7 +308,7 @@ Deno.serve(async (req:Request)=>{
       ok:true,
       service:'dashboard-rpc',
       provider:'Supabase',
-      version:8,
+      version:9,
       methods:Object.keys(handlers).length
     },200,requestId);
   }
