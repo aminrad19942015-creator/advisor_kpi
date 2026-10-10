@@ -7,10 +7,10 @@ let members=[],config=null,dirty=new Set();
 
 function server(name,...args){
  return new Promise((resolve,reject)=>{
-  const runner=google.script.run
+  google.script.run
     .withSuccessHandler(resolve)
-    .withFailureHandler(e=>reject(new Error(e?.message||String(e||'خطا'))));
-  runner[name](...args);
+    .withFailureHandler(e=>reject(new Error(e?.message||String(e||'خطا'))))
+    .gasInvoke(name,args);
  });
 }
 function setMsg(text,kind=''){
@@ -22,14 +22,17 @@ function logout(){
  $('adminView').hidden=true;$('loginView').hidden=false;$('adminPassword').value='';
 }
 async function login(e){
- e.preventDefault();$('loginBtn').disabled=true;$('loginMsg').textContent='';
+ e.preventDefault();
+ $('loginBtn').disabled=true;
+ $('loginBtn').textContent='در حال ورود...';
+ $('loginMsg').textContent='';
  try{
   const r=await server('adminLogin',$('adminPassword').value);
   session=r.token;sessionStorage.setItem('advisorAdminSession',session);
   $('loginView').hidden=true;$('adminView').hidden=false;
   await loadAll();
  }catch(err){$('loginMsg').textContent=err.message}
- finally{$('loginBtn').disabled=false}
+ finally{$('loginBtn').disabled=false;$('loginBtn').textContent='ورود'}
 }
 function fmtDate(v){if(!v)return '—';const d=new Date(v);return isNaN(d)?'—':d.toLocaleString('fa-IR')}
 
