@@ -19,7 +19,9 @@ $files = @(
   "run-morning.cmd",
   "install-schedule.ps1",
   "install-history-schedule.ps1",
-  "verify-schedule.ps1"
+  "verify-schedule.ps1",
+  "cutover-supabase.ps1",
+  "verify-supabase-endpoints.ps1"
 )
 
 foreach ($file in $files) {
