@@ -1,13 +1,14 @@
+const { dashboardRequest } = require('./dashboard-http');
 const {readSnapshot}=require('./local-backup');
 
 function urls(){
- const shadow=process.env.DASHBOARD_API_URL||'https://advisor-kpi.vercel.app/api/crm-shadow';
+ const shadow=process.env.DASHBOARD_API_URL||'https://advisor-kpi-production.up.railway.app/api/crm-shadow';
  return {shadow,activity:process.env.DASHBOARD_ACTIVITY_API_URL||shadow.replace(/\/crm-shadow\/?$/,'/crm-activity')};
 }
 async function post(url,token,body){
  let last;for(let attempt=1;attempt<=4;attempt++)try{
-  const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json','x-crm-connector-token':token},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)});
-  const t=await r.text();if(!r.ok)throw new Error('Recovery API HTTP '+r.status+': '+t);return JSON.parse(t);
+  const r=await dashboardRequest(url,{method:'POST',headers:{'content-type':'application/json','x-crm-connector-token':token},body:JSON.stringify(body),timeoutMs:60000});
+  const t=r.text;if(!r.ok)throw new Error('Recovery API HTTP '+r.status+': '+t);return JSON.parse(t);
  }catch(e){last=e;if(attempt<4)await new Promise(x=>setTimeout(x,1500*attempt));}
  throw last;
 }
