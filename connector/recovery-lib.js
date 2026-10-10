@@ -2,7 +2,7 @@ const { dashboardRequest } = require('./dashboard-http');
 const {readSnapshot}=require('./local-backup');
 
 function urls(){
- const shadow=process.env.DASHBOARD_API_URL||'https://advisor-kpi-production.up.railway.app/api/crm-shadow';
+ const shadow=process.env.DASHBOARD_API_URL||'https://tdsqkxyqmebyufcmskkm.supabase.co/functions/v1/connector-api/crm-shadow';
  return {shadow,activity:process.env.DASHBOARD_ACTIVITY_API_URL||shadow.replace(/\/crm-shadow\/?$/,'/crm-activity')};
 }
 async function post(url,token,body){
