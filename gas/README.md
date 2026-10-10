@@ -77,14 +77,14 @@ GAS never receives a PostgreSQL connection string.
 Required Script Properties:
 
 - `SUPABASE_DASHBOARD_RPC_URL`
-- `SUPABASE_ANON_KEY`
-- `DASHBOARD_RPC_TOKEN` (required for production cutover)
+- `DASHBOARD_RPC_TOKEN`
 
 The browser never receives these values.
 
 The Supabase Edge Function:
-- keeps JWT verification enabled,
-- can additionally require `DASHBOARD_RPC_TOKEN`,
+- has platform JWT verification disabled because GAS is not a Supabase user session,
+- requires `DASHBOARD_RPC_TOKEN` on every dashboard POST request,
+- compares only a SHA-256 hash stored in the private schema,
 - connects to Postgres using Supabase's server-side `SUPABASE_DB_URL`,
 - exposes only the dashboard RPC methods.
 
@@ -112,7 +112,7 @@ Implemented:
 
 Still blocked on external/runtime access:
 - creation/deployment of the actual Apps Script project in the company Google Workspace account
-- setting Script Properties and the matching Supabase Edge secret
+- setting the two GAS Script Properties
 - applying/verifying the new Connector schedule on the company workstation
 - applying the prepared Connector endpoint cutover on the company workstation
 - end-to-end CRM test from the company network
@@ -125,7 +125,6 @@ Implemented after the initial scaffold:
 Still to finish / decide before production:
 - Admin runtime migration/cutover strategy
 - final production smoke-test execution
-- bridge-token activation after the real GAS Script Project exists
 
 ## Apps Script configuration
 
@@ -194,3 +193,15 @@ If one Activity component fails:
 - the overall Activity freshness timestamp resolves to the oldest successful component timestamp.
 
 This avoids one CRM family blocking the other Activity families while preserving last-known-good data.
+
+
+## Dashboard bridge authentication
+
+The GAS dashboard bridge no longer uses the legacy Supabase anon JWT.
+
+Required GAS Script Properties are only:
+
+- `SUPABASE_DASHBOARD_RPC_URL`
+- `DASHBOARD_RPC_TOKEN`
+
+The plain bridge token exists only in GAS Script Properties. Supabase stores only its SHA-256 hash in `private.dashboard_rpc_auth`. The browser never receives the token.
