@@ -1,6 +1,6 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import { getMeta, getTeamSummary, getTeamFilterOptions, getOpenFilterOptions, getOpenSummary, getOpenNearDeadlineDetails } from './dashboard.ts';
-import { getFilteredPeriodSummary, getActivityDetails, getPeriodKpiDetails, getDimensionDetails, getRepeatedCallDetails, getAdvisorTrend, getPeriodCampaignOptions, getLeadStatusKpiDetails } from './period.ts';
+import { getMeta, getTeamSummary, getTeamFilterOptions, getOpenFilterOptions, getOpenSummary, getOpenNearDeadlineDetails, getOpenExportRows } from './dashboard.ts';
+import { getFilteredPeriodSummary, getActivityDetails, getPeriodKpiDetails, getDimensionDetails, getRepeatedCallDetails, getAdvisorTrend, getPeriodCampaignOptions, getLeadStatusKpiDetails, getPeriodExportChunk } from './period.ts';
 import { getDashboardBootstrap, getDashboardInitialPayload } from './bootstrap.ts';
 import { getOpenLeadDetails } from './open-detail.ts';
 import { tursoBatch, tursoSelect } from './turso.ts';
@@ -115,6 +115,17 @@ const handlers:Record<string,Handler>={
   getRepeatedCallDetails: async ([period,filters])=>getRepeatedCallDetails(period,filters||{}),
   getAdvisorTrend: async ([period,advisor])=>getAdvisorTrend(period,advisor),
   getDashboardMeta: async ()=>getMeta(),
+  getExportChunk: async ([tab,dataset,filters,offset,limit])=>{
+    const t=String(tab||'');
+    if(t==='open'){
+      if(Number(offset||0)>0)return [];
+      return getOpenExportRows(filters||{});
+    }
+    if(['daily','weekly','monthly'].includes(t)){
+      return getPeriodExportChunk(t,String(dataset||''),filters||{},Number(offset||0),Number(limit||10000));
+    }
+    throw new Error('تب خروجی نامعتبر است.');
+  },
 };
 
 const responseCache=new Map<string,{expires:number,value:any}>();
@@ -172,7 +183,7 @@ Deno.serve(async (req:Request)=>{
       ok:true,
       service:'dashboard-rpc',
       provider:'Supabase',
-      version:4,
+      version:5,
       methods:Object.keys(handlers).length
     },200,requestId);
   }
