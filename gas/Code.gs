@@ -1,6 +1,7 @@
 const GAS_CONFIG = {
   FUNCTION_URL_PROPERTY: 'SUPABASE_DASHBOARD_RPC_URL',
   ANON_KEY_PROPERTY: 'SUPABASE_ANON_KEY',
+  BRIDGE_TOKEN_PROPERTY: 'DASHBOARD_RPC_TOKEN',
   CACHE_CHUNK_CHARS: 28000,
   CACHE_DEFAULT_TTL_SECONDS: 45,
   MAX_RETRIES: 3
@@ -24,6 +25,7 @@ function getGasHealth() {
     runtime: 'Google Apps Script',
     functionUrlConfigured: !!props.getProperty(GAS_CONFIG.FUNCTION_URL_PROPERTY),
     anonKeyConfigured: !!props.getProperty(GAS_CONFIG.ANON_KEY_PROPERTY),
+    bridgeTokenConfigured: !!props.getProperty(GAS_CONFIG.BRIDGE_TOKEN_PROPERTY),
     now: new Date().toISOString()
   };
 }
@@ -52,7 +54,11 @@ function rpcConfig_() {
   if (!url || !anonKey) {
     throw new Error('GAS is not configured. Set SUPABASE_DASHBOARD_RPC_URL and SUPABASE_ANON_KEY in Script Properties.');
   }
-  return { url: url, anonKey: anonKey };
+  return {
+    url: url,
+    anonKey: anonKey,
+    bridgeToken: props.getProperty(GAS_CONFIG.BRIDGE_TOKEN_PROPERTY) || ''
+  };
 }
 
 function cacheManifestKey_(key) {
@@ -143,11 +149,13 @@ function fetchDashboardRpc_(method, args) {
       const response = UrlFetchApp.fetch(cfg.url, {
         method: 'post',
         contentType: 'application/json',
-        headers: {
+        headers: Object.assign({
           Authorization: 'Bearer ' + cfg.anonKey,
           apikey: cfg.anonKey,
           'x-request-id': requestId
-        },
+        }, cfg.bridgeToken ? {
+          'x-dashboard-token': cfg.bridgeToken
+        } : {}),
         payload: payload,
         muteHttpExceptions: true,
         followRedirects: true
