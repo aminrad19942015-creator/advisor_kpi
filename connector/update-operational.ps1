@@ -5,6 +5,7 @@ Set-Location $connectorDir
 $base = "https://raw.githubusercontent.com/aminrad19942015-creator/advisor_kpi/main/connector"
 $files = @(
   "sync.js",
+  "dashboard-http.js",
   "config-client.js",
   "local-backup.js",
   "recovery-lib.js",
