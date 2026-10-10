@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>داشبورد عملکرد مشاوران</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#071522;color:#eef7ff;margin:0;padding:32px}
+    .card{max-width:760px;margin:40px auto;background:#102336;border:1px solid #23415d;border-radius:18px;padding:24px}
+    h1{margin-top:0}.muted{color:#9db2c6}.ok{color:#74e1c4}.bad{color:#ff9f9f}
+    button{background:#2d79b8;color:white;border:0;border-radius:10px;padding:10px 16px;cursor:pointer}
+    pre{white-space:pre-wrap;background:#071522;padding:14px;border-radius:10px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>زیرساخت نسخه Google Apps Script</h1>
+    <p class="muted">این صفحه فعلاً برای تست اتصال GAS به Supabase است. UI کامل داشبورد در مرحله بعد روی همین Web App قرار می‌گیرد.</p>
+    <button onclick="runHealth()">تست اتصال</button>
+    <pre id="out">آماده تست</pre>
+  </div>
+  <script>
+    function runHealth(){
+      const out=document.getElementById('out');
+      out.textContent='در حال تست...';
+      google.script.run
+        .withFailureHandler(err=>out.textContent='ERROR\n'+(err&&err.message?err.message:err))
+        .withSuccessHandler(async health=>{
+          out.textContent='GAS HEALTH\n'+JSON.stringify(health,null,2)+'\n\nدر حال تست Bootstrap...';
+          google.script.run
+            .withFailureHandler(err=>out.textContent+='\n\nBOOTSTRAP ERROR\n'+(err&&err.message?err.message:err))
+            .withSuccessHandler(data=>out.textContent+='\n\nBOOTSTRAP OK\n'+JSON.stringify({
+              meta:data&&data.meta,
+              teamRows:data&&data.team&&data.team.rows?data.team.rows.length:null,
+              openTotal:data&&data.open&&data.open.kpis?data.open.kpis.total:null
+            },null,2))
+            .getDashboardBootstrap();
+        })
+        .getGasHealth();
+    }
+  </script>
+</body>
+</html>
