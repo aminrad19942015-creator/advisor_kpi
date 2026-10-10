@@ -65,21 +65,34 @@ try {
   }
   Write-RunLog "Morning Open Leads completed."
 
+  $componentFailures = @()
+
   & node (Join-Path $connectorDir "lead-opportunity-sync.js") >> $logFile 2>&1
   if ($LASTEXITCODE -ne 0) {
-    throw "Lead/Opportunity history sync failed with exit code $LASTEXITCODE."
+    $componentFailures += "Lead/Opportunity"
+    Write-RunLog "Lead/Opportunity history FAILED with exit code $LASTEXITCODE. Continuing with remaining components."
+  } else {
+    Write-RunLog "Lead/Opportunity history completed."
   }
-  Write-RunLog "Lead/Opportunity history completed."
 
   & node (Join-Path $connectorDir "calls-sync.js") >> $logFile 2>&1
   if ($LASTEXITCODE -ne 0) {
-    throw "Calls history sync failed with exit code $LASTEXITCODE."
+    $componentFailures += "Calls"
+    Write-RunLog "Calls history FAILED with exit code $LASTEXITCODE. Continuing with remaining components."
+  } else {
+    Write-RunLog "Calls history completed."
   }
-  Write-RunLog "Calls history completed."
 
   & node (Join-Path $connectorDir "tickets-sync.js") >> $logFile 2>&1
   if ($LASTEXITCODE -ne 0) {
-    throw "Tickets history sync failed with exit code $LASTEXITCODE."
+    $componentFailures += "Tickets"
+    Write-RunLog "Tickets history FAILED with exit code $LASTEXITCODE."
+  } else {
+    Write-RunLog "Tickets history completed."
+  }
+
+  if ($componentFailures.Count -gt 0) {
+    throw ("Morning sync completed with failed components: " + ($componentFailures -join ", "))
   }
 
   Write-RunLog "Morning sync completed successfully."
