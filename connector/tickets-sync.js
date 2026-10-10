@@ -3,6 +3,7 @@ const path=require('path');
 const {chromium}=require('playwright');
 const {loadCrmConfig}=require('./config-client');
 const {writeSnapshot}=require('./local-backup');
+const { dashboardRequest } = require('./dashboard-http');
 require('dotenv').config({path:path.join(__dirname,'.env.local')});
 
 let CRM_ORIGIN='https://mxrm.emofid.com';
