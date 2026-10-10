@@ -34,9 +34,10 @@ function powershellRequest(url,options={}){
   const tempFile=path.join(os.tmpdir(),'advisor-kpi-http-'+crypto.randomUUID()+'.json');
   fs.writeFileSync(tempFile,JSON.stringify(cfg),'utf8');
 
+  const escapedTempFile=tempFile.replace(/'/g,"''");
   const ps=`
 $ErrorActionPreference = 'Stop'
-$cfg = Get-Content -Raw -LiteralPath '${TEMP_PATH}' | ConvertFrom-Json
+$cfg = Get-Content -Raw -LiteralPath '${escapedTempFile}' | ConvertFrom-Json
 $headers = @{}
 if ($cfg.headers) {
   $cfg.headers.PSObject.Properties | ForEach-Object { $headers[$_.Name] = [string]$_.Value }
@@ -74,7 +75,7 @@ try {
   [Console]::Error.Write($_.Exception.Message)
   exit 1
 }
-`.replace('${TEMP_PATH}',tempFile.replace(/'/g,"''"));
+`;
 
   const encoded=Buffer.from(ps,'utf16le').toString('base64');
   try{
