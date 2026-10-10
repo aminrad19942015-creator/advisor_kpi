@@ -8,7 +8,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
 let CRM_ORIGIN = 'https://mxrm.emofid.com';
 let CRM_API_PREFIX = '/api/data/v9.0';
-const API_URL = process.env.DASHBOARD_API_URL || 'https://advisor-kpi.vercel.app/api/crm-shadow';
+const API_URL = process.env.DASHBOARD_API_URL || 'https://advisor-kpi-production.up.railway.app/api/crm-shadow';
 const username = (process.env.CRM_USERNAME || '').trim();
 const password = process.env.CRM_PASSWORD || '';
 const connectorToken = process.env.CRM_CONNECTOR_TOKEN;
