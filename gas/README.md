@@ -113,10 +113,15 @@ Still blocked on external/runtime access:
 - switching Connector upload endpoints away from the current Vercel/Railway path
 - end-to-end CRM test from the company network
 
-Still to finish in code:
-- final Excel export path for the GAS runtime
+Implemented after the initial scaffold:
+- lazy client-side Excel export with chunked data retrieval
+- aggregate dashboard diagnostics RPC
+- one-call `runCutoverPreflight()` for GAS + database health
+
+Still to finish / decide before production:
 - Admin runtime migration/cutover strategy
-- production smoke-test checklist and final cutover
+- final production smoke-test execution
+- bridge-token activation after the real GAS Script Project exists
 
 ## Apps Script configuration
 
@@ -127,3 +132,18 @@ https://tdsqkxyqmebyufcmskkm.supabase.co/functions/v1/dashboard-rpc
 ```
 
 Do not commit API keys, database credentials, CRM passwords, Connector tokens, or the dashboard bridge token.
+
+
+## Cutover preflight
+
+After the Apps Script project is created and Script Properties are configured, run:
+
+```javascript
+runCutoverPreflight()
+```
+
+The result checks both:
+- GAS configuration health
+- Supabase dashboard diagnostics
+
+Diagnostics include aggregate row counts, Daily/Weekly/Monthly consistency, Open Leads availability, staging state, cache state, and the three Activity component timestamps. No customer-level rows are returned by the diagnostic endpoint.
