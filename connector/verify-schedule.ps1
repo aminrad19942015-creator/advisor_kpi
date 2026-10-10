@@ -17,6 +17,34 @@ if (Get-ScheduledTask -TaskName $legacyName -ErrorAction SilentlyContinue) {
   throw "Legacy task still exists: $legacyName"
 }
 
+$expectedDays = @("Saturday","Sunday","Monday","Tuesday","Wednesday","Thursday")
+$expectedOpenTimes = @("09:00","12:00","15:00")
+$actualOpenTimes = @($open.Triggers | ForEach-Object { ([datetime]$_.StartBoundary).ToString("HH:mm") } | Sort-Object)
+$actualMorningTimes = @($morning.Triggers | ForEach-Object { ([datetime]$_.StartBoundary).ToString("HH:mm") } | Sort-Object)
+
+if (($actualMorningTimes -join ",") -ne "07:00") {
+  throw "$morningName must run at 07:00; found $($actualMorningTimes -join ', ')."
+}
+if (($actualOpenTimes -join ",") -ne (($expectedOpenTimes | Sort-Object) -join ",")) {
+  throw "$openName times are incorrect; found $($actualOpenTimes -join ', ')."
+}
+
+foreach ($trigger in @($open.Triggers) + @($morning.Triggers)) {
+  $daysText = [string]$trigger.DaysOfWeek
+  foreach ($day in $expectedDays) {
+    if ($daysText -notmatch $day) {
+      throw "Schedule is missing $day in trigger $($trigger.StartBoundary)."
+    }
+  }
+  if ($daysText -match "Friday") {
+    throw "Friday must not be enabled in CRM schedules."
+  }
+}
+
+if (-not $open.Settings.StartWhenAvailable -or -not $morning.Settings.StartWhenAvailable) {
+  throw "StartWhenAvailable must be enabled for both CRM tasks."
+}
+
 Write-Host ""
 Write-Host "=== SCHEDULE VERIFICATION ==="
 Write-Host "$morningName"
