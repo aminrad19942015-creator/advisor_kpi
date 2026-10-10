@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { tursoBatch, tursoSelect, tableColumns } from './turso.ts';
 
 const SHADOW_TABLE='open_leads_crm_shadow';
@@ -18,15 +17,6 @@ function ageDays(v:any){
   const d=parseDate(v); if(!d) return null;
   return Math.max(0,Math.floor((Date.now()-d.getTime())/86400000));
 }
-function safeTokenEqual(got:string,expected:string){
-  const a=Buffer.from(got||''); const b=Buffer.from(expected||'');
-  return a.length===b.length && crypto.timingSafeEqual(a,b);
-}
-export function assertCrmConnectorToken(value:string|null){
-  const expected=process.env.CRM_CONNECTOR_TOKEN||'';
-  if(!expected || !value || !safeTokenEqual(value,expected)) throw Object.assign(new Error('Unauthorized connector.'),{status:401});
-}
-
 export async function ensureCrmShadowTables(){
   await tursoBatch([
     {sql:`CREATE TABLE IF NOT EXISTS ${ident(SHADOW_TABLE)} AS SELECT * FROM open_leads WHERE FALSE`},
