@@ -602,8 +602,143 @@ function detailCell(c,v){
  return String(v);
 }
 function rowsTable(rows){if(!rows||!rows.length)return '<div class="empty">رکوردی وجود ندارد.</div>';const cols=Object.keys(rows[0]);return `<div class="table-wrap activity-detail-wrap"><table class="table"><thead><tr>${cols.map(c=>`<th>${safe(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${safe(detailCell(c,r[c]))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
+const EXPORT_FIELD_LABELS={
+ lead_number:'شماره سرنخ',created_date:'تاریخ ثبت',last_modified_date:'آخرین تغییر',customer_rank:'رتبه مشتری',
+ last_status:'آخرین وضعیت',next_call_reason:'دلیل تماس بعدی',next_followup_at:'تاریخ پیگیری بعدی',customer_name:'نام مشتری',
+ first_name:'نام',middle_name:'نام میانی',last_name:'نام خانوادگی',last_modified_by:'آخرین ویرایش کننده',creator:'ثبت کننده',
+ owner:'مالک',lead_type:'نوع سرنخ',source:'منشا',campaign:'کمپین',source_software:'نرم افزار منشا',identity_id:'کد ملی',
+ mobile:'موبایل',advisor:'مشاور',referrer:'معرف',actual_investment:'سرمایه گذاری واقعی',expected_investment:'سرمایه گذاری مورد انتظار',
+ city:'شهر',business_unit:'واحد تجاری',source_ticket_subject:'موضوع تیکت منشا',source_ticket_contact_topic:'موضوع تماس تیکت منشا',
+ traffic_source:'منشا ترافیک',age_days:'سن لید',opportunity_id:'کد فرصت',title:'عنوان',status:'وضعیت',
+ potential_customer:'مشتری بالقوه',campaign_reference:'کمپین',ticket_source:'تیکت منشا',sales_case_type:'نوع پرونده فروش',
+ investment_type:'نوع سرمایه گذاری',registration_type:'نوع ثبت',call_id:'کد تماس',subject:'موضوع تماس',user:'کاربر',
+ queue:'صف تماس',planned_start:'شروع برنامه ریزی شده',start_date:'تاریخ شروع',customer:'مشتری',destination_number:'شماره مقصد',
+ phone_number:'شماره تماس',parameters:'پارامترها',duration:'مدت تماس',queue_item_id:'کد صف',contact_topic:'موضوع تماس',
+ main_subject:'موضوع اصلی',worked_by:'رسیدگی کننده',resolve_by:'مهلت رسیدگی',entered_queue:'ورود به صف',status_reason:'دلیل وضعیت',
+ description:'توضیحات',origin:'منشا',case_number:'شماره تیکت',national_id:'کد ملی',type:'نوع',closed_at:'زمان بسته شدن',
+ modified_on:'زمان آخرین تغییر',modified_by:'آخرین ویرایش کننده',created_on:'زمان ثبت',created_by:'ثبت کننده'
+};
+
+let xlsxModulePromise=null;
+function loadXlsxModule(){
+ if(globalThis.XLSX)return Promise.resolve(globalThis.XLSX);
+ if(!xlsxModulePromise){
+   xlsxModulePromise=import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs')
+     .catch(err=>{xlsxModulePromise=null;throw err});
+ }
+ return xlsxModulePromise;
+}
+
+function gasExportChunk(tab,dataset,filters,offset,limit){
+ return new Promise((resolve,reject)=>{
+   google.script.run
+    .withFailureHandler(e=>reject(new Error(e?.message||String(e||'خطا در دریافت خروجی'))))
+    .withSuccessHandler(rows=>resolve(Array.isArray(rows)?rows:[]))
+    .getExportChunk(tab,dataset,filters||{},offset||0,limit||10000);
+ });
+}
+
+async function fetchAllExportRows(tab,dataset,filters){
+ const limit=10000,rows=[];
+ let offset=0;
+ while(true){
+   const chunk=await gasExportChunk(tab,dataset,filters,offset,limit);
+   rows.push(...chunk);
+   if(chunk.length<limit)break;
+   offset+=chunk.length;
+   if(offset>300000)throw new Error('حجم خروجی از سقف ایمن عبور کرد.');
+ }
+ return rows;
+}
+
+function exportTranslateRows(rows){
+ return (rows||[]).map(row=>{
+   const out={};
+   Object.entries(row||{}).forEach(([key,value])=>{out[EXPORT_FIELD_LABELS[key]||key]=value});
+   return out;
+ });
+}
+
+function exportFilterRows(filters){
+ const rows=[];
+ Object.entries(filters||{}).forEach(([key,value])=>{
+   const text=Array.isArray(value)?value.filter(Boolean).join('، '):String(value??'').trim();
+   if(text)rows.push({فیلتر:key,مقدار:text});
+ });
+ return rows.length?rows:[{فیلتر:'وضعیت',مقدار:'بدون فیلتر'}];
+}
+
+function exportAdvisorRows(rows){
+ return (rows||[]).map(r=>({
+   'مشاور':r.name||'','رده':r.role||'','تیم لید':r.teamLead||'','سرتیم':r.seniorLead||'','تیم':r.team||'',
+   'لید بسته':Number(r.leads||0),'لید صحبت‌شده':Number(r.talked||0),'فرصت OPP':Number(r.opps||0),
+   'تماس':Number(r.calls||0),'T8':Number(r.t8||0),'تیکت':Number(r.tickets||0),'فعالیت کل':Number(r.total||0),
+   'روز حضور':Number(r.attendanceDays||0),'سرانه تماس':Number(r.callAvg||0),'سرانه لید بسته':Number(r.leadAvg||0),
+   'سرانه لید صحبت‌شده':Number(r.talkedAvg||0),'سرانه OPP':Number(r.oppAvg||0),'سرانه T8':Number(r.t8Avg||0),
+   'سرانه تیکت':Number(r.ticketAvg||0),'سرانه فعالیت':Number(r.activityAvg||0)
+ }));
+}
+
+function appendExportSheet(XLSX,wb,name,rows){
+ const safeRows=rows&&rows.length?rows:[{'وضعیت':'داده‌ای برای فیلتر فعلی وجود ندارد'}];
+ const ws=XLSX.utils.json_to_sheet(safeRows);
+ const keys=Object.keys(safeRows[0]||{});
+ ws['!cols']=keys.map(k=>({wch:Math.min(42,Math.max(12,String(k).length+4))}));
+ XLSX.utils.book_append_sheet(wb,ws,String(name).slice(0,31));
+}
+
 async function exportDashboardTab(tab){
-  toast('خروجی اکسل در نسخه GAS پس از تکمیل مسیر Export فعال می‌شود.');
+ const btn=document.querySelector(`button[data-export-tab="${tab}"]`);
+ if(btn?.disabled)return;
+ const original=btn?.textContent||'خروجی اکسل';
+ if(btn){btn.disabled=true;btn.textContent='در حال آماده‌سازی...';}
+ try{
+   toast('در حال آماده‌سازی خروجی اکسل...');
+   const XLSX=await loadXlsxModule();
+   const wb=XLSX.utils.book_new();
+   let filename='advisor-dashboard.xlsx';
+
+   if(tab==='team'){
+     const rows=((state.data?.team||{}).rows||[]).map(r=>({
+       'نام':r.name||'','کد پرسنلی':r.personnelCode||'','ایمیل':r.email||'','تیم لید':r.teamLead||'',
+       'سرتیم':r.seniorLead||'','تیم':r.team||'','جنسیت':r.gender||'','رده':r.role||'','واحد تجاری':r.businessUnit||''
+     }));
+     appendExportSheet(XLSX,wb,'فهرست افراد',rows);
+     appendExportSheet(XLSX,wb,'فیلترها',exportFilterRows(filterState.team||{}));
+     filename='team-overview.xlsx';
+   }else if(tab==='open'){
+     const rows=await fetchAllExportRows('open','open',filterState.open||{});
+     appendExportSheet(XLSX,wb,'سرنخ های باز',rows);
+     appendExportSheet(XLSX,wb,'فیلترها',exportFilterRows(filterState.open||{}));
+     filename='open-leads.xlsx';
+   }else if(['daily','weekly','monthly'].includes(tab)){
+     const filters=filterState[tab]||{};
+     appendExportSheet(XLSX,wb,'خلاصه مشاوران',exportAdvisorRows(state.data?.[tab]?.advisors||[]));
+     const specs=[
+       ['leads','لیدها'],
+       ['opportunities','فرصت ها'],
+       ['calls','تماس ها'],
+       ['tickets','تیکت ها']
+     ];
+     for(const [dataset,sheet] of specs){
+       toast('در حال دریافت '+sheet+'...');
+       const rows=await fetchAllExportRows(tab,dataset,filters);
+       appendExportSheet(XLSX,wb,sheet,exportTranslateRows(rows));
+     }
+     appendExportSheet(XLSX,wb,'فیلترها',exportFilterRows(filters));
+     filename=tab==='daily'?'فعالیت دیروز.xlsx':tab==='weekly'?'فعالیت هفته.xlsx':'فعالیت ماهانه.xlsx';
+   }else{
+     throw new Error('تب خروجی نامعتبر است.');
+   }
+
+   XLSX.writeFile(wb,filename,{compression:true});
+   toast('خروجی اکسل آماده شد.');
+ }catch(e){
+   console.error(e);
+   toast('خطا در خروجی اکسل: '+(e?.message||e||'خطای نامشخص'));
+ }finally{
+   if(btn){btn.disabled=false;btn.textContent=original;}
+ }
 }
 function loadActivityDetail(period,type,user){const box=$(`${period}Detail`);box.style.display='block';$(`${period}DetailSub`).textContent='در حال دریافت...';$(`${period}DetailBody`).innerHTML='<div class="empty">در حال دریافت...</div>';google.script.run.withFailureHandler(e=>{$(`${period}DetailBody`).innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>'}).withSuccessHandler(rows=>{$(`${period}DetailSub`).textContent=fa(rows.length)+' رکورد — '+user;$(`${period}DetailBody`).innerHTML=rowsTable(rows);makeTableSortable(box);box.scrollIntoView({behavior:'smooth',block:'start'})}).getActivityDetails(period,type,user,filterState[period]||{})}
 function loadPeriodKpiDetail(period,type,title){
