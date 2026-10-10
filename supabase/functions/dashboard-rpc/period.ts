@@ -248,3 +248,18 @@ export async function getRepeatedCallDetails(period:string,filters:any={}){
  WHERE 1=1 LIMIT 5000`,w.args);
 }
 export async function getAdvisorTrend(period:string,advisor:string){const member=await tursoSelect('SELECT name FROM team_members WHERE name=? LIMIT 1',[advisor]);if(!member.length)return [];const L=table(period,'lead'),O=table(period,'opp'),C=table(period,'call'),T=table(period,'ticket');const q:any=await namedBatch([{key:'leads',sql:`SELECT (last_modified_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",SUM(CASE WHEN ${TALKED_CONDITION_SQL} THEN 1 ELSE 0 END) talked FROM ${L} WHERE owner=? AND last_modified_date<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]},{key:'opps',sql:`SELECT (created_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) opp FROM ${O} WHERE creator=? AND registration_type='OPP' AND created_date<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]},{key:'calls',sql:`SELECT (start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C} WHERE "user"=? AND start_date<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]},{key:'tickets',sql:`SELECT (closed_at::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) tickets FROM ${T} WHERE owner=? AND closed_at<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]}]);const m:any={};const touch=(d:string)=>m[d]||(m[d]={day:d,talked:0,opp:0,calls:0,t8:0,tickets:0,total:0});for(const r of q.leads||[])touch(r.day).talked=Number(r.talked||0);for(const r of q.opps||[])touch(r.day).opp=Number(r.opp||0);for(const r of q.calls||[]){const x=touch(r.day);x.calls=Number(r.calls||0);x.t8=Number(r.t8||0)}for(const r of q.tickets||[])touch(r.day).tickets=Number(r.tickets||0);return Object.keys(m).sort().map(d=>{const r=m[d];r.total=r.talked+r.opp+r.t8+r.tickets;return r});}
+
+
+export async function getPeriodExportChunk(period:string,dataset:string,filters:any={},offset=0,limit=10000){
+ const sourceMap:any={leads:'lead',opportunities:'opp',calls:'call',tickets:'ticket'};
+ const source=sourceMap[String(dataset||'')];
+ if(!source)throw new Error('نوع دیتاست خروجی نامعتبر است.');
+ const safeOffset=Math.max(0,Math.floor(Number(offset)||0));
+ const safeLimit=Math.max(1,Math.min(10000,Math.floor(Number(limit)||10000)));
+ const w=whereFor(filters||{},source,period);
+ const order=source==='lead'?'last_modified_date':source==='opp'?'created_date':source==='call'?'start_date':'closed_at';
+ return tursoSelect(
+   `SELECT * FROM ${table(period,source)}${w.where} ORDER BY ${order} DESC LIMIT ? OFFSET ?`,
+   [...w.args,safeLimit,safeOffset]
+ );
+}
