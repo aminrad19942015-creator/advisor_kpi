@@ -205,3 +205,36 @@ Required GAS Script Properties are only:
 - `DASHBOARD_RPC_TOKEN`
 
 The plain bridge token exists only in GAS Script Properties. Supabase stores only its SHA-256 hash in `private.dashboard_rpc_auth`. The browser never receives the token.
+
+
+## Browser last-good fallback
+
+The user dashboard stores only aggregate / advisor-summary payloads in browser localStorage:
+- initial Team + Open Leads summary
+- first-load Daily / Weekly / Monthly summaries
+
+Customer-level drilldown rows are not persisted in browser storage.
+
+If the GAS-to-Supabase call fails temporarily, the dashboard renders the last valid summary and shows a visible fallback warning instead of rendering zeros.
+
+The UI also compares Open Leads and Activity timestamps with the fixed Tehran schedule and shows a stale-data warning when a scheduled refresh appears to have been missed.
+
+## GAS Admin
+
+The same Apps Script project can serve the independent Admin page using:
+
+`?admin=1`
+
+Admin features:
+- independent password login with an 8-hour signed session
+- CRM/Open Leads/Activity row counts and sync timestamps
+- Daily/Weekly/Monthly consistency QA
+- team member add/edit/delete
+- CRM source-mode and business-rule editing
+- local-backup recovery command for the next Connector run
+
+Required additional Script Property:
+
+- `ADMIN_PASSWORD`
+
+The browser never receives the dashboard bridge token. Admin writes pass through GAS to the separate Supabase `admin-rpc` Edge Function, and successful Admin writes increment `admin_revision` so dashboard caches are invalidated automatically.
