@@ -50,6 +50,25 @@ function ttlFor(method:string){
   return 0;
 }
 
+async function bridgeTokenOk(req:Request){
+  const expected=String(Deno.env.get('DASHBOARD_RPC_TOKEN')||'');
+  if(!expected)return true;
+
+  const supplied=String(req.headers.get('x-dashboard-token')||'');
+  if(!supplied)return false;
+
+  const enc=new TextEncoder();
+  const [a,b]=await Promise.all([
+    crypto.subtle.digest('SHA-256',enc.encode(expected)),
+    crypto.subtle.digest('SHA-256',enc.encode(supplied))
+  ]);
+  const aa=new Uint8Array(a),bb=new Uint8Array(b);
+  if(aa.length!==bb.length)return false;
+  let diff=0;
+  for(let i=0;i<aa.length;i++)diff|=aa[i]^bb[i];
+  return diff===0;
+}
+
 function json(body:any,status=200,requestId=''){
   return new Response(JSON.stringify(body),{
     status,
@@ -75,6 +94,10 @@ Deno.serve(async (req:Request)=>{
   }
 
   if(req.method!=='POST')return json({ok:false,error:'Method not allowed.'},405,requestId);
+
+  if(!(await bridgeTokenOk(req))){
+    return json({ok:false,error:'Unauthorized dashboard bridge.'},401,requestId);
+  }
 
   try{
     const body=await req.json();
