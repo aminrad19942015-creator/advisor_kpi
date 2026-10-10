@@ -15,7 +15,7 @@ function headersObject(headers){
 function curlRequest(url,options={}){
   const method=String(options.method||'GET').toUpperCase();
   const headers=headersObject(options.headers);
-  const args=['-sS','--max-time',String(Math.max(5,Math.ceil(timeoutMs(options)/1000))),'-X',method];
+  const args=['-sS','--http1.1','--retry','3','--retry-delay','1','--retry-all-errors','--max-time',String(Math.max(5,Math.ceil(timeoutMs(options)/1000))),'-X',method,'-H','Expect:','-H','Connection: close'];
   for(const [k,v] of Object.entries(headers)) args.push('-H',String(k)+': '+String(v));
   const body=options.body===undefined||options.body===null?'':String(options.body);
   if(body) args.push('--data-binary','@-');
