@@ -6,6 +6,81 @@ const safe=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').repla
 const fmt=v=>{const d=new Date(v);return isNaN(d)?'—':d.toLocaleDateString('fa-IR',{year:'numeric',month:'2-digit',day:'2-digit'})};
 const norm=v=>String(v??'').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[\u200c\u200f]/g,' ').replace(/\s+/g,' ').trim();
 
+const SNAPSHOT_PREFIX='advisor-kpi-summary-v1:';
+const SNAPSHOT_MAX_AGE_MS=14*24*60*60*1000;
+const TEHRAN_OFFSET_MS=210*60*1000;
+
+function snapshotWrite(key,payload){
+ try{
+  localStorage.setItem(SNAPSHOT_PREFIX+key,JSON.stringify({savedAt:new Date().toISOString(),payload}));
+ }catch(e){console.warn('Snapshot write skipped',e)}
+}
+function snapshotRead(key){
+ try{
+  const raw=localStorage.getItem(SNAPSHOT_PREFIX+key);
+  if(!raw)return null;
+  const parsed=JSON.parse(raw);
+  const saved=Date.parse(parsed?.savedAt||'');
+  if(!Number.isFinite(saved)||Date.now()-saved>SNAPSHOT_MAX_AGE_MS)return null;
+  return parsed;
+ }catch(e){return null}
+}
+function validInitialPayload(data){
+ return !!(data&&typeof data==='object'&&data.team&&typeof data.team==='object'&&
+   data.team.kpis&&Array.isArray(data.team.rows)&&data.open&&typeof data.open==='object'&&
+   data.open.kpis&&data.teamFilters&&data.openFilters);
+}
+function validPeriodPayload(payload){
+ return !!(payload&&typeof payload==='object'&&payload.summary&&typeof payload.summary==='object'&&
+   Array.isArray(payload.summary.advisors||[]));
+}
+function healthBanner(kind,message,meta=''){
+ const el=$('dataHealthBanner');if(!el)return;
+ if(!message){el.hidden=true;el.className='data-health-banner';el.innerHTML='';return}
+ el.hidden=false;el.className='data-health-banner '+kind;
+ el.innerHTML='<b>'+safe(message)+'</b>'+(meta?'<span class="health-meta">'+safe(meta)+'</span>':'');
+}
+function latestExpectedSync(kind,nowMs=Date.now()){
+ const localNow=new Date(nowMs+TEHRAN_OFFSET_MS);
+ const todayLocalMidnight=Date.UTC(localNow.getUTCFullYear(),localNow.getUTCMonth(),localNow.getUTCDate());
+ const currentMinutes=localNow.getUTCHours()*60+localNow.getUTCMinutes();
+ const schedule=kind==='open'?[7*60,9*60,12*60,15*60]:[7*60];
+ const grace=60;
+ for(let back=0;back<8;back++){
+  const localMidnight=todayLocalMidnight-back*86400000;
+  const d=new Date(localMidnight);
+  if(d.getUTCDay()===5)continue; // Friday
+  const maxMinutes=back===0?currentMinutes-grace:24*60;
+  const eligible=schedule.filter(x=>x<=maxMinutes);
+  if(!eligible.length)continue;
+  return localMidnight+eligible[eligible.length-1]*60000-TEHRAN_OFFSET_MS;
+ }
+ return null;
+}
+function freshnessWarnings(meta){
+ const out=[];
+ const checks=[
+  ['Open Leads',meta?.crmShadowLastSyncAt,'open'],
+  ['Activity',meta?.crmActivityLastSyncAt,'activity']
+ ];
+ for(const [label,raw,kind] of checks){
+  const expected=latestExpectedSync(kind);
+  const actual=Date.parse(raw||'');
+  if(expected&&(!Number.isFinite(actual)||actual<expected)){
+   const exp=new Date(expected).toLocaleString('fa-IR');
+   const got=Number.isFinite(actual)?new Date(actual).toLocaleString('fa-IR'):'بدون ثبت';
+   out.push(label+' عقب است؛ آخرین: '+got+' | موعد مورد انتظار: '+exp);
+  }
+ }
+ return out;
+}
+function updateFreshnessBanner(meta){
+ const warnings=freshnessWarnings(meta||{});
+ if(warnings.length)healthBanner('warning','هشدار تازگی داده',warnings.join(' — '));
+ else healthBanner('','','');
+}
+
+
 function toast(t){const el=$('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2400)}
 function bars(entries){if(!entries||!entries.length)return '<div class="empty">داده‌ای وجود ندارد.</div>';const max=entries[0][1]||1;return `<div class="bars">`+entries.map(([k,v])=>`<div class="bar-row clickable" data-v="${safe(k)}" title="${safe(k)}"><div class="bar-label">${safe(k)}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,v/max*100)}%"></div></div><div class="bar-value">${fa(v)}</div></div>`).join('')+`</div>`}
 function bindBars(root,handler){root.querySelectorAll('.bar-row').forEach(r=>r.onclick=()=>handler(r.dataset.v))}
@@ -795,8 +870,37 @@ function loadInitialPeriod(period){
  if(periodInitialLoaded[period])return;
  setPageLoading(pageId,true);
  google.script.run
-  .withFailureHandler(e=>{setPageLoading(pageId,false);toast('خطا در دریافت اطلاعات: '+(e?.message||e||'خطای نامشخص'));})
+  .withFailureHandler(e=>{
+    const snap=snapshotRead('period:'+period);
+    if(snap&&validPeriodPayload(snap.payload)){
+      const payload=snap.payload;
+      filterOptions.periodCampaign[period]=payload.campaignOptions||[];
+      state.data[period]=payload.summary||{};
+      periodInitialLoaded[period]=true;
+      renderPeriod(period,pageId,period==='daily'?'فعالیت دیروز':period==='weekly'?'فعالیت هفته':'فعالیت ماهانه');
+      bindChartHover($(pageId));
+      setPageLoading(pageId,false);
+      healthBanner('danger','اتصال موقتاً در دسترس نیست؛ آخرین Snapshot سالم نمایش داده می‌شود.','ذخیره مرورگر: '+new Date(snap.savedAt).toLocaleString('fa-IR'));
+      return;
+    }
+    setPageLoading(pageId,false);
+    toast('خطا در دریافت اطلاعات: '+(e?.message||e||'خطای نامشخص'));
+  })
   .withSuccessHandler(payload=>{
+    if(!validPeriodPayload(payload)){
+      const snap=snapshotRead('period:'+period);
+      if(snap&&validPeriodPayload(snap.payload)){
+        payload=snap.payload;
+        healthBanner('danger','پاسخ نامعتبر Backend دریافت شد؛ آخرین Snapshot سالم نمایش داده می‌شود.','ذخیره مرورگر: '+new Date(snap.savedAt).toLocaleString('fa-IR'));
+      }else{
+        setPageLoading(pageId,false);
+        toast('پاسخ نامعتبر برای '+period);
+        return;
+      }
+    }else{
+      snapshotWrite('period:'+period,payload);
+      updateFreshnessBanner(state.data?.meta||{});
+    }
     filterOptions.periodCampaign[period]=payload?.campaignOptions||[];
     state.data[period]=payload?.summary||{};
     periodInitialLoaded[period]=true;
@@ -815,7 +919,7 @@ function switchPage(id){
 }
 document.querySelectorAll('.nav-item').forEach(b=>b.onclick=()=>switchPage(b.dataset.page));
 
-function renderAll(){
+function renderAll(options={}){
  const meta=state.data.meta||{};
  $('lastSyncText').textContent=meta.lastSyncAt?new Date(meta.lastSyncAt).toLocaleString('fa-IR'):'—';
  $('dataVersionText').textContent=meta.dataVersion?String(meta.dataVersion).slice(-16):'—';
@@ -825,11 +929,38 @@ function renderAll(){
  renderOpen();
  makeTableSortable();
  $('loadingScreen').style.display='none';
+ if(options.fallback){
+   healthBanner('danger','اتصال موقتاً در دسترس نیست؛ آخرین Snapshot سالم نمایش داده می‌شود.',options.savedAt?'ذخیره مرورگر: '+new Date(options.savedAt).toLocaleString('fa-IR'):'');
+ }else{
+   updateFreshnessBanner(meta);
+ }
 }
 
 google.script.run
- .withFailureHandler(e=>{document.querySelector('.loading-card p').textContent='خطا در دریافت اطلاعات: '+(e.message||e)})
- .withSuccessHandler(data=>{state.data=data;renderAll()})
+ .withFailureHandler(e=>{
+   const snap=snapshotRead('initial');
+   if(snap&&validInitialPayload(snap.payload)){
+     state.data=snap.payload;
+     renderAll({fallback:true,savedAt:snap.savedAt});
+     return;
+   }
+   document.querySelector('.loading-card p').textContent='خطا در دریافت اطلاعات: '+(e.message||e);
+ })
+ .withSuccessHandler(data=>{
+   if(validInitialPayload(data)){
+     snapshotWrite('initial',data);
+     state.data=data;
+     renderAll();
+     return;
+   }
+   const snap=snapshotRead('initial');
+   if(snap&&validInitialPayload(snap.payload)){
+     state.data=snap.payload;
+     renderAll({fallback:true,savedAt:snap.savedAt});
+     return;
+   }
+   document.querySelector('.loading-card p').textContent='پاسخ نامعتبر از سرویس داده دریافت شد.';
+ })
  .getDashboardInitialPayload(filterState.open);
 
 </script>
