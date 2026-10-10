@@ -1,0 +1,166 @@
+<script>
+const $=id=>document.getElementById(id);
+const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;");
+const fa=v=>Number(v||0).toLocaleString('fa-IR');
+let session=sessionStorage.getItem('advisorAdminSession')||'';
+let members=[],config=null,dirty=new Set();
+
+function server(name,...args){
+ return new Promise((resolve,reject)=>{
+  const runner=google.script.run
+    .withSuccessHandler(resolve)
+    .withFailureHandler(e=>reject(new Error(e?.message||String(e||'خطا'))));
+  runner[name](...args);
+ });
+}
+function setMsg(text,kind=''){
+ const el=$('globalMsg');if(!text){el.hidden=true;return}
+ el.hidden=false;el.className='notice '+kind;el.textContent=text;
+}
+function logout(){
+ session='';sessionStorage.removeItem('advisorAdminSession');
+ $('adminView').hidden=true;$('loginView').hidden=false;$('adminPassword').value='';
+}
+async function login(e){
+ e.preventDefault();$('loginBtn').disabled=true;$('loginMsg').textContent='';
+ try{
+  const r=await server('adminLogin',$('adminPassword').value);
+  session=r.token;sessionStorage.setItem('advisorAdminSession',session);
+  $('loginView').hidden=true;$('adminView').hidden=false;
+  await loadAll();
+ }catch(err){$('loginMsg').textContent=err.message}
+ finally{$('loginBtn').disabled=false}
+}
+function fmtDate(v){if(!v)return '—';const d=new Date(v);return isNaN(d)?'—':d.toLocaleString('fa-IR')}
+
+async function loadAll(){
+ setMsg('در حال دریافت اطلاعات...');
+ try{
+  const [overview,team,cfg]=await Promise.all([
+   server('adminGetOverview',session),
+   server('adminListTeamMembers',session),
+   server('adminGetCrmConfig',session)
+  ]);
+  members=(team||[]).map(x=>({...x,_original:x.personnel_code,_dirty:false}));
+  config=cfg;dirty.clear();
+  renderOverview(overview);renderTeam();renderConfig();setMsg('');
+ }catch(err){
+  if(/نشست مدیریت/.test(err.message)){logout();$('loginMsg').textContent='نشست مدیریت منقضی شده است.';return}
+  setMsg(err.message,'bad');
+ }
+}
+
+function renderOverview(x){
+ const c=x?.counts||{},cards=[
+  ['اعضای تیم',c.team_members],['Open Leads',c.open_leads_crm_shadow],
+  ['Lead D/W/M',fa(c.daily_leads)+' / '+fa(c.weekly_leads)+' / '+fa(c.monthly_leads)],
+  ['Opportunity D/W/M',fa(c.daily_opportunities)+' / '+fa(c.weekly_opportunities)+' / '+fa(c.monthly_opportunities)],
+  ['Calls D/W/M',fa(c.daily_calls)+' / '+fa(c.weekly_calls)+' / '+fa(c.monthly_calls)],
+  ['Tickets D/W/M',fa(c.daily_tickets)+' / '+fa(c.weekly_tickets)+' / '+fa(c.monthly_tickets)]
+ ];
+ $('overviewCards').innerHTML=cards.map(([k,v])=>'<div class="stat"><span>'+esc(k)+'</span><b>'+esc(v)+'</b></div>').join('');
+ const m=x?.meta||{};
+ $('syncInfo').innerHTML=[
+  ['Open Leads',m.crm_shadow_last_sync_at],['Activity',m.crm_activity_last_sync_at],['Admin revision',m.admin_revision]
+ ].map(([k,v])=>'<div class="sync-item"><b>'+esc(k)+'</b><span>'+esc(fmtDate(v))+'</span></div>').join('');
+ const commands=x?.commands||[];
+ $('commandsBox').innerHTML=commands.length?'<h3>آخرین فرمان‌های Connector</h3>'+commands.map(r=>'<div class="command-row"><b>#'+esc(r.id)+'</b><span>'+esc(r.command)+'</span><span>'+esc(r.status)+'</span><span>'+esc(fmtDate(r.created_at))+'</span></div>').join(''):'';
+}
+
+function filteredMembers(){
+ const q=$('teamSearch').value.trim().toLowerCase();
+ if(!q)return members;
+ return members.filter(m=>Object.values(m).some(v=>String(v??'').toLowerCase().includes(q)));
+}
+function renderTeam(){
+ const rows=filteredMembers();
+ $('teamBody').innerHTML=rows.map(m=>{
+  const idx=members.indexOf(m);
+  const input=(key)=>'<input data-row="'+idx+'" data-key="'+key+'" value="'+esc(m[key])+'">';
+  return '<tr class="'+(m._dirty?'dirty-row':'')+'">'+
+   '<td>'+input('name')+'</td><td>'+input('personnel_code')+'</td><td>'+input('email')+'</td>'+
+   '<td>'+input('team_lead')+'</td><td>'+input('senior_lead')+'</td><td>'+input('team')+'</td>'+
+   '<td>'+input('gender')+'</td><td>'+input('role')+'</td><td>'+input('business_unit')+'</td>'+
+   '<td><button class="danger" data-del="'+idx+'">حذف</button></td></tr>';
+ }).join('');
+ $('teamMeta').textContent=fa(rows.length)+' نفر نمایش داده می‌شود — '+fa(dirty.size)+' ردیف ذخیره‌نشده';
+ document.querySelectorAll('#teamBody input').forEach(el=>el.oninput=()=>{
+  const i=Number(el.dataset.row),key=el.dataset.key;
+  members[i][key]=el.value;members[i]._dirty=true;dirty.add(i);el.closest('tr').classList.add('dirty-row');
+  $('teamMeta').textContent=fa(filteredMembers().length)+' نفر نمایش داده می‌شود — '+fa(dirty.size)+' ردیف ذخیره‌نشده';
+ });
+ document.querySelectorAll('[data-del]').forEach(btn=>btn.onclick=()=>deleteMember(Number(btn.dataset.del)));
+}
+async function saveTeam(){
+ const rows=[...dirty].map(i=>({...members[i],original_personnel_code:members[i]._original}));
+ if(!rows.length){setMsg('تغییری برای ذخیره وجود ندارد.');return}
+ $('saveTeamBtn').disabled=true;
+ try{
+  const r=await server('adminUpdateTeamMembers',session,rows);
+  setMsg(fa(r.updated||rows.length)+' ردیف ذخیره شد.','ok');
+  await loadAll();
+ }catch(err){setMsg(err.message,'bad')}
+ finally{$('saveTeamBtn').disabled=false}
+}
+async function addMember(){
+ const m={};document.querySelectorAll('[data-new]').forEach(el=>m[el.dataset.new]=el.value.trim());
+ $('addTeamBtn').disabled=true;
+ try{
+  await server('adminAddTeamMember',session,m);
+  document.querySelectorAll('[data-new]').forEach(el=>el.value='');
+  setMsg('نفر جدید اضافه شد.','ok');await loadAll();
+ }catch(err){setMsg(err.message,'bad')}
+ finally{$('addTeamBtn').disabled=false}
+}
+async function deleteMember(i){
+ const m=members[i];if(!m||!confirm('این نفر حذف شود؟'))return;
+ try{await server('adminDeleteTeamMember',session,m._original);setMsg('نفر حذف شد.','ok');await loadAll()}
+ catch(err){setMsg(err.message,'bad')}
+}
+
+const list=v=>(Array.isArray(v)?v:[]).join('\n');
+const readList=id=>$(id).value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+function sourceSelect(id,value){return '<select id="'+id+'"><option value="crm"'+(value==='crm'?' selected':'')+'>CRM</option><option value="excel"'+(value==='excel'?' selected':'')+'>Excel</option></select>'}
+function area(id,label,value){return '<label>'+esc(label)+'</label><textarea id="'+id+'">'+esc(list(value))+'</textarea>'}
+function tech(label,value){return '<label>'+esc(label)+' · فقط خواندنی</label><input class="tech" readonly value="'+esc(value||'')+'">'}
+function renderConfig(){
+ if(!config)return;
+ $('configGrid').innerHTML=
+ '<div class="config-card"><h3>Open Leads / Lead</h3>'+tech('CRM Origin',config.crmOrigin)+tech('API Version',config.apiVersion)+
+ '<label>منبع Open Leads</label>'+sourceSelect('srcOpen',config.openLeads?.sourceMode||'crm')+
+ '<label>منبع Lead</label>'+sourceSelect('srcLead',config.lead?.sourceMode||'crm')+
+ area('leadUnits','واحدهای تجاری Lead',config.lead?.businessUnits)+area('leadStatuses','وضعیت‌های مجاز Lead',config.lead?.statuses)+'</div>'+
+ '<div class="config-card"><h3>Opportunity</h3>'+tech('Entity',config.opportunity?.entity)+
+ '<label>منبع</label>'+sourceSelect('srcOpp',config.opportunity?.sourceMode||'crm')+
+ area('oppUnits','واحدهای تجاری',config.opportunity?.businessUnits)+'</div>'+
+ '<div class="config-card"><h3>Calls</h3>'+tech('Entity',config.calls?.entity)+
+ '<label>منبع</label>'+sourceSelect('srcCalls',config.calls?.sourceMode||'crm')+
+ area('callUnits','واحدهای تجاری',config.calls?.businessUnits)+'</div>'+
+ '<div class="config-card"><h3>Tickets</h3>'+tech('Queue Entity',config.ticket?.queueEntity)+tech('Case Entity',config.ticket?.caseEntity)+
+ '<label>منبع</label>'+sourceSelect('srcTicket',config.ticket?.sourceMode||'crm')+
+ area('ticketQueues','Queueهای مجاز',config.ticket?.queues)+area('ticketTopics','موضوعات',config.ticket?.topics)+
+ area('ticketExcluded','وضعیت‌های حذف‌شده',config.ticket?.excludedStatuses)+area('ticketRanks','رتبه‌های مشتری',config.ticket?.customerRanks)+'</div>';
+}
+async function saveConfig(){
+ if(!config)return;
+ const next=structuredClone(config);
+ next.openLeads.sourceMode=$('srcOpen').value;
+ next.lead.sourceMode=$('srcLead').value;next.lead.businessUnits=readList('leadUnits');next.lead.statuses=readList('leadStatuses');
+ next.opportunity.sourceMode=$('srcOpp').value;next.opportunity.businessUnits=readList('oppUnits');
+ next.calls.sourceMode=$('srcCalls').value;next.calls.businessUnits=readList('callUnits');
+ next.ticket.sourceMode=$('srcTicket').value;next.ticket.queues=readList('ticketQueues');next.ticket.topics=readList('ticketTopics');
+ next.ticket.excludedStatuses=readList('ticketExcluded');next.ticket.customerRanks=readList('ticketRanks');
+ $('saveConfigBtn').disabled=true;
+ try{config=await server('adminSaveCrmConfig',session,next);setMsg('تنظیمات CRM ذخیره شد. اجرای بعدی Connector از این تنظیمات استفاده می‌کند.','ok');renderConfig();await refreshOverview()}
+ catch(err){setMsg(err.message,'bad')}
+ finally{$('saveConfigBtn').disabled=false}
+}
+async function refreshOverview(){try{renderOverview(await server('adminGetOverview',session))}catch(err){setMsg(err.message,'bad')}}
+async function qa(){try{const r=await server('adminRunQa',session);setMsg(r.ok?'کنترل سلامت موفق بود.':'کنترل سلامت خطا دارد: '+(r.failed||[]).join(', '),r.ok?'ok':'bad');renderOverview(r.overview)}catch(err){setMsg(err.message,'bad')}}
+async function recovery(){if(!confirm('درخواست بازیابی Backup محلی در اجرای بعدی Connector ثبت شود؟'))return;try{const r=await server('adminRequestRecovery',session);setMsg(r.message||'درخواست ثبت شد.','ok');await refreshOverview()}catch(err){setMsg(err.message,'bad')}}
+
+$('loginForm').onsubmit=login;$('logoutBtn').onclick=logout;$('refreshBtn').onclick=refreshOverview;$('qaBtn').onclick=qa;$('recoveryBtn').onclick=recovery;
+$('saveTeamBtn').onclick=saveTeam;$('addTeamBtn').onclick=addMember;$('teamSearch').oninput=renderTeam;$('saveConfigBtn').onclick=saveConfig;
+
+if(session){$('loginView').hidden=true;$('adminView').hidden=false;loadAll().catch(()=>logout())}
+</script>
