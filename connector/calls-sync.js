@@ -194,13 +194,13 @@ async function api(body){
   let lastError;
   for(let attempt=1;attempt<=4;attempt++){
     try{
-      const response=await fetch(API_URL,{
+      const response=await dashboardRequest(API_URL,{
         method:'POST',
         headers:{'Content-Type':'application/json','x-crm-connector-token':connectorToken},
         body:JSON.stringify(body),
-        signal:AbortSignal.timeout(60000)
+        timeoutMs:60000
       });
-      const text=await response.text();
+      const text=response.text;
       if(!response.ok) throw new Error('Dashboard activity API HTTP '+response.status+': '+text);
       return JSON.parse(text);
     }catch(error){
