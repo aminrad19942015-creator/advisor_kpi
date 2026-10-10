@@ -253,7 +253,7 @@ function ttlFor(method:string){
 
 async function bridgeTokenOk(req:Request){
   const expected=String(Deno.env.get('DASHBOARD_RPC_TOKEN')||'');
-  if(!expected)return true;
+  if(!expected)return false;
 
   const supplied=String(req.headers.get('x-dashboard-token')||'');
   if(!supplied)return false;
@@ -289,7 +289,7 @@ Deno.serve(async (req:Request)=>{
       ok:true,
       service:'dashboard-rpc',
       provider:'Supabase',
-      version:6,
+      version:7,
       methods:Object.keys(handlers).length
     },200,requestId);
   }
