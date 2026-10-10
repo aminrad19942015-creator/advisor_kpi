@@ -3,6 +3,7 @@ const path=require('path');
 const {chromium}=require('playwright');
 const {loadCrmConfig}=require('./config-client');
 const {writeSnapshot}=require('./local-backup');
+const { dashboardRequest } = require('./dashboard-http');
 require('dotenv').config({path:path.join(__dirname,'.env.local')});
 
 let CRM_ORIGIN='https://mxrm.emofid.com';
@@ -97,7 +98,7 @@ async function fetchOpps(page,range,label,cfg){
 
 async function api(body){
  let last;
- for(let a=1;a<=4;a++)try{const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json','x-crm-connector-token':connectorToken},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)});const t=await r.text();if(!r.ok)throw new Error('Dashboard activity API HTTP '+r.status+': '+t);return JSON.parse(t);}catch(e){last=e;console.log('Dashboard API attempt '+a+' failed: '+(e?.message||e));if(a<4)await new Promise(res=>setTimeout(res,1500*a));}
+ for(let a=1;a<=4;a++)try{const r=await dashboardRequest(API_URL,{method:'POST',headers:{'Content-Type':'application/json','x-crm-connector-token':connectorToken},body:JSON.stringify(body),timeoutMs:60000});const t=r.text;if(!r.ok)throw new Error('Dashboard activity API HTTP '+r.status+': '+t);return JSON.parse(t);}catch(e){last=e;console.log('Dashboard API attempt '+a+' failed: '+(e?.message||e));if(a<4)await new Promise(res=>setTimeout(res,1500*a));}
  throw last;
 }
 async function upload(datasets,range){
