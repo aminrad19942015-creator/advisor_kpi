@@ -327,3 +327,8 @@ function getExportChunk(tab, dataset, filters, offset, limit) {
     Math.max(1, Math.min(10000, Number(limit || 10000)))
   ]);
 }
+
+
+function getDashboardDiagnostics() {
+  return fetchDashboardRpc_('getDashboardDiagnostics', []);
+}
