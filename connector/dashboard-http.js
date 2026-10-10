@@ -24,74 +24,61 @@ function parseMarkedOutput(out){
 }
 
 function powershellRequest(url,options={}){
+  const id=crypto.randomUUID();
+  const cfgFile=path.join(os.tmpdir(),'advisor-kpi-http-'+id+'.json');
+  const respFile=path.join(os.tmpdir(),'advisor-kpi-http-'+id+'.response.txt');
+  const statusFile=path.join(os.tmpdir(),'advisor-kpi-http-'+id+'.status.txt');
   const cfg={
     url,
     method:String(options.method||'GET').toUpperCase(),
     headers:headersObject(options.headers),
     body:options.body===undefined||options.body===null?'':String(options.body),
-    timeoutSec:Math.max(5,Math.ceil(timeoutMs(options)/1000))
+    timeoutSec:Math.max(5,Math.ceil(timeoutMs(options)/1000)),
+    respFile,
+    statusFile
   };
-  const tempFile=path.join(os.tmpdir(),'advisor-kpi-http-'+crypto.randomUUID()+'.json');
-  fs.writeFileSync(tempFile,JSON.stringify(cfg),'utf8');
+  fs.writeFileSync(cfgFile,JSON.stringify(cfg),'utf8');
 
-  const escapedTempFile=tempFile.replace(/'/g,"''");
-  const ps=`
-$ErrorActionPreference = 'Stop'
-$cfg = Get-Content -Raw -LiteralPath '${escapedTempFile}' | ConvertFrom-Json
-$headers = @{}
-if ($cfg.headers) {
-  $cfg.headers.PSObject.Properties | ForEach-Object { $headers[$_.Name] = [string]$_.Value }
-}
-$params = @{
-  Uri = [string]$cfg.url
-  Method = [string]$cfg.method
-  Headers = $headers
-  UseBasicParsing = $true
-  TimeoutSec = [int]$cfg.timeoutSec
-  ErrorAction = 'Stop'
-}
-if ([string]$cfg.body -ne '') { $params['Body'] = [string]$cfg.body }
-try {
-  $r = Invoke-WebRequest @params
-  [Console]::Out.Write([string]$r.Content)
-  [Console]::Out.Write("\`n__HTTP_STATUS__:" + [int]$r.StatusCode)
-} catch {
-  $resp = $_.Exception.Response
-  if ($resp) {
-    $status = [int]$resp.StatusCode
-    $text = ''
-    try {
-      $stream = $resp.GetResponseStream()
-      if ($stream) {
-        $reader = New-Object System.IO.StreamReader($stream)
-        $text = $reader.ReadToEnd()
-        $reader.Dispose()
-      }
-    } catch {}
-    [Console]::Out.Write([string]$text)
-    [Console]::Out.Write("\`n__HTTP_STATUS__:" + $status)
-    exit 0
-  }
-  [Console]::Error.Write($_.Exception.Message)
-  exit 1
-}
-`;
+  const escapedCfgFile=cfgFile.replace(/'/g,"''");
+  const ps=[
+    "$ErrorActionPreference = 'Stop'",
+    "$cfg = Get-Content -Raw -Encoding UTF8 -LiteralPath '"+escapedCfgFile+"' | ConvertFrom-Json",
+    "$headers = @{}",
+    "if ($cfg.headers) { $cfg.headers.PSObject.Properties | ForEach-Object { $headers[$_.Name] = [string]$_.Value } }",
+    "$params = @{ Uri=[string]$cfg.url; Method=[string]$cfg.method; Headers=$headers; UseBasicParsing=$true; TimeoutSec=[int]$cfg.timeoutSec; ErrorAction='Stop' }",
+    "if ([string]$cfg.body -ne '') { $params['Body'] = [Text.Encoding]::UTF8.GetBytes([string]$cfg.body) }",
+    "try {",
+    "  $r = Invoke-WebRequest @params",
+    "  [IO.File]::WriteAllText([string]$cfg.respFile,[string]$r.Content,(New-Object Text.UTF8Encoding($false)))",
+    "  [IO.File]::WriteAllText([string]$cfg.statusFile,[string][int]$r.StatusCode,(New-Object Text.UTF8Encoding($false)))",
+    "} catch {",
+    "  $resp = $_.Exception.Response",
+    "  if ($resp) {",
+    "    $status = [int]$resp.StatusCode",
+    "    $text = ''",
+    "    try { $stream=$resp.GetResponseStream(); if($stream){ $reader=New-Object IO.StreamReader($stream,[Text.Encoding]::UTF8); $text=$reader.ReadToEnd(); $reader.Dispose() } } catch {}",
+    "    [IO.File]::WriteAllText([string]$cfg.respFile,[string]$text,(New-Object Text.UTF8Encoding($false)))",
+    "    [IO.File]::WriteAllText([string]$cfg.statusFile,[string]$status,(New-Object Text.UTF8Encoding($false)))",
+    "    exit 0",
+    "  }",
+    "  [Console]::Error.Write($_.Exception.Message)",
+    "  exit 1",
+    "}"
+  ].join('\n');
 
   const encoded=Buffer.from(ps,'utf16le').toString('base64');
   try{
-    const r=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',encoded],{
-      encoding:'utf8',
-      windowsHide:true,
-      maxBuffer:20*1024*1024
-    });
+    const r=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',encoded],{encoding:'utf8',windowsHide:true,maxBuffer:20*1024*1024});
     if(r.error) throw r.error;
     if(r.status!==0) throw new Error('PowerShell HTTP failed ('+r.status+'): '+String(r.stderr||'').trim());
-    return parseMarkedOutput(r.stdout);
+    if(!fs.existsSync(statusFile)) throw new Error('PowerShell HTTP did not write a status file.');
+    const status=Number(fs.readFileSync(statusFile,'utf8').trim());
+    const text=fs.existsSync(respFile)?fs.readFileSync(respFile,'utf8'):'';
+    return {status,ok:status>=200&&status<300,text};
   }finally{
-    try{fs.unlinkSync(tempFile);}catch{}
+    for(const file of [cfgFile,respFile,statusFile]) try{fs.unlinkSync(file);}catch{}
   }
 }
-
 function curlRequest(url,options={}){
   const method=String(options.method||'GET').toUpperCase();
   const headers=headersObject(options.headers);
