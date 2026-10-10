@@ -336,3 +336,17 @@ function runCutoverPreflight() {
     dashboard: getDashboardDiagnostics()
   };
 }
+
+
+function testConnection() {
+  const started = Date.now();
+  const result = runCutoverPreflight();
+  const output = {
+    ok: !!(result && result.gas && result.gas.ok && result.dashboard && result.dashboard.ok),
+    elapsedMs: Date.now() - started,
+    gas: result.gas,
+    dashboard: result.dashboard
+  };
+  console.log(JSON.stringify(output, null, 2));
+  return output;
+}
