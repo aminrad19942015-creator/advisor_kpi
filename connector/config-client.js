@@ -1,3 +1,4 @@
+const { dashboardRequest } = require('./dashboard-http');
 function configUrl(){
   const shadowUrl=process.env.DASHBOARD_API_URL||'https://advisor-kpi-production.up.railway.app/api/crm-shadow';
   return process.env.DASHBOARD_CRM_CONFIG_URL||shadowUrl.replace(/\/crm-shadow\/?$/,'/crm-config');
@@ -8,12 +9,12 @@ async function loadCrmConfig(connectorToken){
   let lastError;
   for(let attempt=1;attempt<=3;attempt++){
     try{
-      const r=await fetch(url,{
+      const r=await dashboardRequest(url,{
         method:'GET',
         headers:{'x-crm-connector-token':connectorToken},
-        signal:AbortSignal.timeout(30000)
+        timeoutMs:30000
       });
-      const text=await r.text();
+      const text=r.text;
       if(!r.ok) throw new Error('CRM config HTTP '+r.status+': '+text);
       const j=JSON.parse(text);
       if(!j.ok||!j.config) throw new Error(j.error||'CRM config response is invalid.');
