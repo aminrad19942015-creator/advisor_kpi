@@ -1,27 +1,117 @@
 $ErrorActionPreference = "Stop"
 
 $openName = "Advisor CRM Open Leads Sync"
-$historyName = "Advisor CRM Historical Activity Sync"
+$morningName = "Advisor CRM Morning Sync"
+$legacyName = "Advisor CRM Historical Activity Sync"
 
 $open = Get-ScheduledTask -TaskName $openName -ErrorAction Stop
-$history = Get-ScheduledTask -TaskName $historyName -ErrorAction Stop
+$morning = Get-ScheduledTask -TaskName $morningName -ErrorAction Stop
 
-if ($open.Triggers.Count -ne 4) {
-  throw "$openName must have exactly 4 triggers; found $($open.Triggers.Count)."
+if ($open.Triggers.Count -ne 3) {
+  throw "$openName must have exactly 3 triggers (09:00, 12:00, 15:00); found $($open.Triggers.Count)."
 }
-if ($history.Triggers.Count -ne 1) {
-  throw "$historyName must have exactly 1 trigger; found $($history.Triggers.Count)."
+if ($morning.Triggers.Count -ne 1) {
+  throw "$morningName must have exactly 1 trigger (07:00); found $($morning.Triggers.Count)."
+}
+if (Get-ScheduledTask -TaskName $legacyName -ErrorAction SilentlyContinue) {
+  throw "Legacy task still exists: $legacyName"
+}
+
+$expectedOpenTimes = @("09:00","12:00","15:00")
+$actualOpenTimes = @($open.Triggers | ForEach-Object { ([datetime]$_.StartBoundary).ToString("HH:mm") } | Sort-Object)
+$actualMorningTimes = @($morning.Triggers | ForEach-Object { ([datetime]$_.StartBoundary).ToString("HH:mm") } | Sort-Object)
+
+if (($actualMorningTimes -join ",") -ne "07:00") {
+  throw "$morningName must run at 07:00; found $($actualMorningTimes -join ', ')."
+}
+if (($actualOpenTimes -join ",") -ne (($expectedOpenTimes | Sort-Object) -join ",")) {
+  throw "$openName times are incorrect; found $($actualOpenTimes -join ', ')."
+}
+
+function Assert-TriggerDays([string]$TaskName) {
+  [xml]$xml = Export-ScheduledTask -TaskName $TaskName
+  $ns = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
+  $ns.AddNamespace("t", $xml.DocumentElement.NamespaceURI)
+
+  $triggers = @($xml.SelectNodes("//t:CalendarTrigger", $ns))
+  $expected = @("Saturday","Sunday","Monday","Tuesday","Wednesday","Thursday")
+
+  if ($triggers.Count -eq 0) {
+    throw "$TaskName has no CalendarTrigger nodes."
+  }
+
+  for ($i = 0; $i -lt $triggers.Count; $i++) {
+    $trigger = $triggers[$i]
+    $dayNodes = @($trigger.SelectNodes("./t:ScheduleByWeek/t:DaysOfWeek/*", $ns))
+    $days = @($dayNodes | ForEach-Object { $_.LocalName } | Sort-Object -Unique)
+
+    foreach ($day in $expected) {
+      if ($days -notcontains $day) {
+        throw "$TaskName trigger #$($i + 1) is missing $day. Actual days: $($days -join ', ')."
+      }
+    }
+
+    if ($days -contains "Friday") {
+      throw "$TaskName trigger #$($i + 1) must not run on Friday."
+    }
+
+    if ($days.Count -ne 6) {
+      throw "$TaskName trigger #$($i + 1) must run on exactly 6 unique days. Actual days: $($days -join ', ')."
+    }
+  }
+}
+
+Assert-TriggerDays $openName
+Assert-TriggerDays $morningName
+
+if (-not $open.Settings.StartWhenAvailable -or -not $morning.Settings.StartWhenAvailable) {
+  throw "StartWhenAvailable must be enabled for both CRM tasks."
+}
+
+$openAction = $open.Actions | Select-Object -First 1
+$morningAction = $morning.Actions | Select-Object -First 1
+
+$expectedOpenCmd = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "run.cmd"
+$expectedMorningCmd = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "run-morning.cmd"
+
+function Assert-ActionPath([string]$TaskName,$Action,[string]$ExpectedCmd) {
+  if ([string]$Action.Execute -ne "cmd.exe") {
+    throw "$TaskName must execute cmd.exe; found $($Action.Execute)."
+  }
+  $args = [string]$Action.Arguments
+  if ($args -notlike "*$ExpectedCmd*") {
+    throw "$TaskName action points to the wrong Connector path. Expected: $ExpectedCmd. Actual: $args"
+  }
+}
+
+Assert-ActionPath $openName $openAction $expectedOpenCmd
+Assert-ActionPath $morningName $morningAction $expectedMorningCmd
+
+foreach ($trigger in @($open.Triggers) + @($morning.Triggers)) {
+  $dt = [datetime]$trigger.StartBoundary
+  if ($dt.Second -ne 0) {
+    throw "Trigger seconds must be 00; found $($dt.ToString('HH:mm:ss')) in $($trigger.StartBoundary)."
+  }
+}
+
+if ($open.State -eq 'Disabled' -or $morning.State -eq 'Disabled') {
+  throw "Both CRM scheduled tasks must be enabled."
 }
 
 Write-Host ""
 Write-Host "=== SCHEDULE VERIFICATION ==="
+Write-Host "$morningName"
+$morning.Triggers | Select-Object StartBoundary,Enabled | Format-Table -AutoSize
+Write-Host "Action: $($morningAction.Execute) $($morningAction.Arguments)"
 Write-Host "$openName"
-$open.Triggers | Select-Object StartBoundary,DaysOfWeek,Enabled | Format-Table -AutoSize
-Write-Host "$historyName"
-$history.Triggers | Select-Object StartBoundary,DaysOfWeek,Enabled | Format-Table -AutoSize
+$open.Triggers | Select-Object StartBoundary,Enabled | Format-Table -AutoSize
+Write-Host "Action: $($openAction.Execute) $($openAction.Arguments)"
 
+$morningInfo = Get-ScheduledTaskInfo -TaskName $morningName
 $openInfo = Get-ScheduledTaskInfo -TaskName $openName
-$historyInfo = Get-ScheduledTaskInfo -TaskName $historyName
+Write-Host "Morning next run: $($morningInfo.NextRunTime)"
 Write-Host "Open Leads next run: $($openInfo.NextRunTime)"
-Write-Host "Historical next run: $($historyInfo.NextRunTime)"
-Write-Host "Policy: Saturday-Thursday only. Friday is excluded in both Task Scheduler triggers and runner safety guards."
+Write-Host "Policy: Saturday-Thursday only; 07:00 morning serial run + 09:00/12:00/15:00 Open Leads."
+Write-Host "Global mutex prevents overlapping CRM browser sessions."
+Write-Host ""
+Write-Host "SCHEDULE_VERIFICATION_OK"

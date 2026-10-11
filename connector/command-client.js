@@ -2,7 +2,7 @@ const { dashboardRequest } = require('./dashboard-http');
 const {restoreAll}=require('./recovery-lib');
 
 function commandUrl(){
- const shadow=process.env.DASHBOARD_API_URL||'https://advisor-kpi-production.up.railway.app/api/crm-shadow';
+ const shadow=process.env.DASHBOARD_API_URL||'https://tdsqkxyqmebyufcmskkm.supabase.co/functions/v1/connector-api/crm-shadow';
  return process.env.DASHBOARD_CONNECTOR_COMMAND_URL||shadow.replace(/\/crm-shadow\/?$/,'/connector-command');
 }
 async function request(url,token,options={}){

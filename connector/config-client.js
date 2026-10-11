@@ -1,6 +1,6 @@
 const { dashboardRequest } = require('./dashboard-http');
 function configUrl(){
-  const shadowUrl=process.env.DASHBOARD_API_URL||'https://advisor-kpi-production.up.railway.app/api/crm-shadow';
+  const shadowUrl=process.env.DASHBOARD_API_URL||'https://tdsqkxyqmebyufcmskkm.supabase.co/functions/v1/connector-api/crm-shadow';
   return process.env.DASHBOARD_CRM_CONFIG_URL||shadowUrl.replace(/\/crm-shadow\/?$/,'/crm-config');
 }
 

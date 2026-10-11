@@ -2,6 +2,13 @@ $ErrorActionPreference = "Stop"
 $connectorDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $connectorDir
 
+$envFile = Join-Path $connectorDir ".env.local"
+$packageFile = Join-Path $connectorDir "package.json"
+
+if (-not (Test-Path $envFile) -or -not (Test-Path $packageFile)) {
+  throw "This script must be run from the real Connector folder. Required files not found: .env.local and/or package.json. Current folder: $connectorDir"
+}
+
 $base = "https://raw.githubusercontent.com/aminrad19942015-creator/advisor_kpi/main/connector"
 $files = @(
   "sync.js",
@@ -14,11 +21,16 @@ $files = @(
   "lead-opportunity-sync.js",
   "calls-sync.js",
   "tickets-sync.js",
+  "run-operational.ps1",
   "run.cmd",
-  "run-history.cmd",
+  "run-morning.cmd",
   "install-schedule.ps1",
   "install-history-schedule.ps1",
-  "verify-schedule.ps1"
+  "verify-schedule.ps1",
+  "cutover-supabase.ps1",
+  "verify-supabase-endpoints.ps1",
+  "preflight-supabase-auth.ps1",
+  "show-token-hash.ps1"
 )
 
 foreach ($file in $files) {
@@ -27,20 +39,24 @@ foreach ($file in $files) {
 }
 
 Write-Host ""
-Write-Host "Installing Open Leads schedule..."
-powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "install-schedule.ps1")
+Write-Host "Installing 07:00 Morning schedule..."
+powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "install-history-schedule.ps1")
+if ($LASTEXITCODE -ne 0) { throw "Morning schedule installation failed with exit code $LASTEXITCODE." }
 
 Write-Host ""
-Write-Host "Installing Historical Activity schedule..."
-powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "install-history-schedule.ps1")
+Write-Host "Installing intraday Open Leads schedule..."
+powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "install-schedule.ps1")
+if ($LASTEXITCODE -ne 0) { throw "Open Leads schedule installation failed with exit code $LASTEXITCODE." }
 
 Write-Host ""
 Write-Host "Verifying schedules..."
 powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "verify-schedule.ps1")
+if ($LASTEXITCODE -ne 0) { throw "Schedule verification failed with exit code $LASTEXITCODE." }
 
 Write-Host ""
 Write-Host "Operational connector update completed."
 Write-Host "Days: Saturday-Thursday (Friday disabled)"
-Write-Host "Open Leads: 07:00, 09:00, 12:00, 15:00"
-Write-Host "Historical activity: 07:15 only"
+Write-Host "07:00: Open Leads, then Lead/Opportunity, Calls and Tickets serially"
+Write-Host "09:00, 12:00, 15:00: Open Leads"
+Write-Host "Overlap protection: enabled by a global Windows mutex"
 Write-Host "Missed-run recovery: enabled (StartWhenAvailable)"
