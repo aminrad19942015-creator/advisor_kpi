@@ -50,7 +50,14 @@ async function postgresBatch(statements:DatabaseStatement[]):Promise<any[][]>{
     });
   }
 
-  return await Promise.all(statements.map(s=>pgExec(sql,s)));
+  // Connector batches often contain ordered DDL/DML steps such as
+  // DROP -> CREATE -> INSERT. Running them concurrently can race across
+  // pooled Postgres connections and make a just-created staging table
+  // appear missing. Execute non-transactional connector statements in
+  // declared order; explicit BEGIN/COMMIT batches already use one tx.
+  const out:any[][]=[];
+  for(const s of statements) out.push(await pgExec(sql,s));
+  return out;
 }
 
 export function databaseProvider(){return 'Supabase';}
