@@ -9,7 +9,7 @@ if (-not (Test-Path $envFile) -or -not (Test-Path $packageFile)) {
   throw "This script must be run from the real Connector folder. Required files not found: .env.local and/or package.json. Current folder: $connectorDir"
 }
 
-$base = "https://raw.githubusercontent.com/aminrad19942015-creator/advisor_kpi/gas-dashboard-v1/connector"
+$base = "https://raw.githubusercontent.com/aminrad19942015-creator/advisor_kpi/main/connector"
 $files = @(
   "sync.js",
   "dashboard-http.js",
@@ -56,7 +56,7 @@ if ($LASTEXITCODE -ne 0) { throw "Schedule verification failed with exit code $L
 Write-Host ""
 Write-Host "Operational connector update completed."
 Write-Host "Days: Saturday-Thursday (Friday disabled)"
-Write-Host "07:00: Open Leads, then historical activity serially"
+Write-Host "07:00: Open Leads, then Lead/Opportunity, Calls and Tickets serially"
 Write-Host "09:00, 12:00, 15:00: Open Leads"
 Write-Host "Overlap protection: enabled by a global Windows mutex"
 Write-Host "Missed-run recovery: enabled (StartWhenAvailable)"
