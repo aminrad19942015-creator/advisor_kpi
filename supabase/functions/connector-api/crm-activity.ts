@@ -355,9 +355,12 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
 
       assertPeriodCountConsistency(prepared);
 
-      // If an entire requested 3-period family unexpectedly becomes empty
-      // while the current monthly table is populated, preserve the last good
-      // snapshot instead of silently replacing it with an empty dataset.
+      // Never accept an all-zero complete Daily/Weekly/Monthly family from CRM.
+      // In this dashboard a monthly Lead/Opportunity/Calls/Tickets family is
+      // expected to contain data. Zero across all three periods is treated as
+      // an upstream/filter/authentication failure, even if the current target
+      // is already empty. This prevents a prior bad snapshot from weakening
+      // the last-good protection on subsequent runs.
       const byDataset=new Map(prepared.map(x=>[x.dataset,x]));
       const familyMonthly=[
         ['leads','weekly_leads','monthly_leads'],
@@ -367,10 +370,11 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
       ];
       for(const [dailyKey,weeklyKey,monthlyKey] of familyMonthly){
         const d=byDataset.get(dailyKey),w=byDataset.get(weeklyKey),m=byDataset.get(monthlyKey);
-        if(!d||!w||!m||d.count||w.count||m.count) continue;
-        const old=await tursoSelect(`SELECT COUNT(*) AS n FROM ${ident(TARGETS[monthlyKey])}`);
-        if(Number(old?.[0]?.n||0)>0){
-          throw new Error(`Refusing to replace non-empty ${monthlyKey} history with an all-zero CRM snapshot.`);
+        if(!d||!w||!m) continue;
+        if(d.count===0 && w.count===0 && m.count===0){
+          throw new Error(
+            `Refusing all-zero CRM activity family ${dailyKey}/${weeklyKey}/${monthlyKey}; preserving current snapshot.`
+          );
         }
       }
 
