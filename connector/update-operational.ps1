@@ -2,6 +2,13 @@ $ErrorActionPreference = "Stop"
 $connectorDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $connectorDir
 
+$envFile = Join-Path $connectorDir ".env.local"
+$packageFile = Join-Path $connectorDir "package.json"
+
+if (-not (Test-Path $envFile) -or -not (Test-Path $packageFile)) {
+  throw "This script must be run from the real Connector folder. Required files not found: .env.local and/or package.json. Current folder: $connectorDir"
+}
+
 $base = "https://raw.githubusercontent.com/aminrad19942015-creator/advisor_kpi/gas-dashboard-v1/connector"
 $files = @(
   "sync.js",
