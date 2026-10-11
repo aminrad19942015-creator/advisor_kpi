@@ -40,14 +40,17 @@ foreach ($file in $files) {
 Write-Host ""
 Write-Host "Installing 07:00 Morning schedule..."
 powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "install-history-schedule.ps1")
+if ($LASTEXITCODE -ne 0) { throw "Morning schedule installation failed with exit code $LASTEXITCODE." }
 
 Write-Host ""
 Write-Host "Installing intraday Open Leads schedule..."
 powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "install-schedule.ps1")
+if ($LASTEXITCODE -ne 0) { throw "Open Leads schedule installation failed with exit code $LASTEXITCODE." }
 
 Write-Host ""
 Write-Host "Verifying schedules..."
 powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "verify-schedule.ps1")
+if ($LASTEXITCODE -ne 0) { throw "Schedule verification failed with exit code $LASTEXITCODE." }
 
 Write-Host ""
 Write-Host "Operational connector update completed."
