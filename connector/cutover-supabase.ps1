@@ -3,7 +3,13 @@ $connectorDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $envFile = Join-Path $connectorDir ".env.local"
 
 if (-not (Test-Path $envFile)) {
-  throw ".env.local not found in connector folder."
+  throw ".env.local not found in Connector folder."
+}
+
+Write-Host "Running Supabase authentication preflight..."
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $connectorDir "preflight-supabase-auth.ps1")
+if ($LASTEXITCODE -ne 0) {
+  throw "Supabase authentication preflight failed. Endpoint cutover was NOT applied."
 }
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -18,31 +24,46 @@ $values = [ordered]@{
   "DASHBOARD_CONNECTOR_COMMAND_URL" = "$base/connector-command"
 }
 
-$lines = Get-Content -LiteralPath $envFile -Encoding UTF8
-foreach ($name in $values.Keys) {
-  $value = $values[$name]
-  $pattern = "^[ ]*" + [regex]::Escape($name) + "="
-  $found = $false
+try {
+  $lines = Get-Content -LiteralPath $envFile -Encoding UTF8
+  foreach ($name in $values.Keys) {
+    $value = $values[$name]
+    $pattern = "^[ ]*" + [regex]::Escape($name) + "="
+    $found = $false
 
-  for ($i = 0; $i -lt $lines.Count; $i++) {
-    if ($lines[$i] -match $pattern) {
-      $lines[$i] = "$name=$value"
-      $found = $true
-      break
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+      if ($lines[$i] -match $pattern) {
+        $lines[$i] = "$name=$value"
+        $found = $true
+        break
+      }
+    }
+
+    if (-not $found) {
+      $lines += "$name=$value"
     }
   }
 
-  if (-not $found) {
-    $lines += "$name=$value"
+  [IO.File]::WriteAllLines($envFile, $lines, (New-Object Text.UTF8Encoding($false)))
+
+  Write-Host ""
+  Write-Host "Connector endpoints switched to Supabase."
+  Write-Host "Backup: $backup"
+  Write-Host ""
+  Write-Host "Verifying all endpoints..."
+
+  powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $connectorDir "verify-supabase-endpoints.ps1")
+  if ($LASTEXITCODE -ne 0) {
+    throw "Endpoint verification failed after cutover."
   }
+
+  Write-Host ""
+  Write-Host "SUPABASE_CUTOVER_OK"
 }
-
-[IO.File]::WriteAllLines($envFile, $lines, (New-Object Text.UTF8Encoding($false)))
-
-Write-Host ""
-Write-Host "Connector endpoint cutover prepared."
-Write-Host "Backup: $backup"
-Write-Host "Destination: Supabase connector-api"
-Write-Host ""
-Write-Host "Verifying endpoints..."
-powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $connectorDir "verify-supabase-endpoints.ps1")
+catch {
+  Write-Host ""
+  Write-Host "Cutover failed. Restoring previous .env.local..."
+  Copy-Item -LiteralPath $backup -Destination $envFile -Force
+  Write-Host "ROLLBACK_OK"
+  throw
+}
