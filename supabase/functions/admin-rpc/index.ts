@@ -177,7 +177,7 @@ const handlers:Record<string,(args:any[])=>Promise<any>>={
 };
 
 Deno.serve(async(req:Request)=>{
-  if(req.method==='GET')return json({ok:true,service:'admin-rpc',version:1});
+  if(req.method==='GET')return json({ok:true,service:'admin-rpc',version:2});
   if(req.method!=='POST')return json({ok:false,error:'Method not allowed.'},405);
   if(!(await bridgeTokenOk(req)))return json({ok:false,error:'Unauthorized admin bridge.'},401);
   try{
