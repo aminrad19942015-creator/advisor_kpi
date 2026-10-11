@@ -50,7 +50,9 @@ async function postgresBatch(statements:DatabaseStatement[]):Promise<any[][]>{
     });
   }
 
-  return await Promise.all(statements.map(s=>pgExec(sql,s)));
+  const out:any[][]=[];
+  for(const s of statements) out.push(await pgExec(sql,s));
+  return out;
 }
 
 export function databaseProvider(){return 'Supabase';}
