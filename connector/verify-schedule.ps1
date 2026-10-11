@@ -28,30 +28,41 @@ if (($actualOpenTimes -join ",") -ne (($expectedOpenTimes | Sort-Object) -join "
   throw "$openName times are incorrect; found $($actualOpenTimes -join ', ')."
 }
 
-function Assert-TaskDays([string]$TaskName) {
+function Assert-TriggerDays([string]$TaskName) {
   [xml]$xml = Export-ScheduledTask -TaskName $TaskName
   $ns = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
   $ns.AddNamespace("t", $xml.DocumentElement.NamespaceURI)
 
-  $dayNodes = $xml.SelectNodes("//t:CalendarTrigger/t:ScheduleByWeek/t:DaysOfWeek/*", $ns)
-  $days = @($dayNodes | ForEach-Object { $_.LocalName })
-
+  $triggers = @($xml.SelectNodes("//t:CalendarTrigger", $ns))
   $expected = @("Saturday","Sunday","Monday","Tuesday","Wednesday","Thursday")
-  foreach ($day in $expected) {
-    if ($days -notcontains $day) {
-      throw "$TaskName is missing $day. Actual days: $($days -join ', ')."
+
+  if ($triggers.Count -eq 0) {
+    throw "$TaskName has no CalendarTrigger nodes."
+  }
+
+  for ($i = 0; $i -lt $triggers.Count; $i++) {
+    $trigger = $triggers[$i]
+    $dayNodes = @($trigger.SelectNodes("./t:ScheduleByWeek/t:DaysOfWeek/*", $ns))
+    $days = @($dayNodes | ForEach-Object { $_.LocalName } | Sort-Object -Unique)
+
+    foreach ($day in $expected) {
+      if ($days -notcontains $day) {
+        throw "$TaskName trigger #$($i + 1) is missing $day. Actual days: $($days -join ', ')."
+      }
     }
-  }
-  if ($days -contains "Friday") {
-    throw "$TaskName must not run on Friday."
-  }
-  if ($days.Count -ne 6) {
-    throw "$TaskName must run on exactly 6 days. Actual days: $($days -join ', ')."
+
+    if ($days -contains "Friday") {
+      throw "$TaskName trigger #$($i + 1) must not run on Friday."
+    }
+
+    if ($days.Count -ne 6) {
+      throw "$TaskName trigger #$($i + 1) must run on exactly 6 unique days. Actual days: $($days -join ', ')."
+    }
   }
 }
 
-Assert-TaskDays $openName
-Assert-TaskDays $morningName
+Assert-TriggerDays $openName
+Assert-TriggerDays $morningName
 
 if (-not $open.Settings.StartWhenAvailable -or -not $morning.Settings.StartWhenAvailable) {
   throw "StartWhenAvailable must be enabled for both CRM tasks."
