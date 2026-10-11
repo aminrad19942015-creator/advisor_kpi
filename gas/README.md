@@ -90,9 +90,11 @@ The Supabase Edge Function:
 
 The GAS manifest is restricted to the advisor-kpi Supabase hostname and is configured for domain-only Web App access.
 
-## Current branch status
+## Production status
 
-Branch: `gas-dashboard-v1`
+Production branch: `main`
+
+Migration branch: `gas-dashboard-v1` (completed and ready to merge)
 
 Implemented:
 - GAS Web App shell using the existing production dashboard UI
@@ -110,21 +112,25 @@ Implemented:
 - global Connector overlap guard
 - source-controlled Supabase Edge Function
 
-Still blocked on external/runtime access:
-- creation/deployment of the actual Apps Script project in the company Google Workspace account
-- setting the two GAS Script Properties
-- applying/verifying the new Connector schedule on the company workstation
-- applying the prepared Connector endpoint cutover on the company workstation
-- end-to-end CRM test from the company network
+Production cutover completed and verified:
+- Apps Script Web App deployed in the company Google Workspace account
+- GAS Script Properties configured
+- Connector endpoints cut over to Supabase
+- Windows schedules installed and verified on the company workstation
+- Open Leads, Lead/Opportunity, Calls and Tickets all completed successful live CRM syncs
+- Admin login, health check and read path verified
+- production verification returned `PRODUCTION_VERIFICATION_OK` and `COMPANY_PC_FINALIZATION_OK`
 
 Implemented after the initial scaffold:
 - lazy client-side Excel export with chunked data retrieval
 - aggregate dashboard diagnostics RPC
 - one-call `runCutoverPreflight()` for GAS + database health
 
-Still to finish / decide before production:
-- Admin runtime migration/cutover strategy
-- final production smoke-test execution
+Production runtime is now:
+- Windows Connector for CRM refresh only
+- Supabase PostgreSQL + Edge Functions as the authoritative backend
+- Google Apps Script Web App as the user/Admin runtime
+- Vercel/Railway are not part of the operational request path
 
 ## Apps Script configuration
 
@@ -179,7 +185,7 @@ Prepared workstation scripts:
 - `connector/verify-supabase-endpoints.ps1`
   - verifies all four Supabase routes using the existing Connector token
 
-The source branch already defaults Connector traffic to Supabase. It must not be cut over on the workstation until the matching Supabase secret is configured.
+The company workstation is cut over to the Supabase Connector API. Future operational updates are sourced from the `main` branch.
 
 ## Morning failure policy
 
