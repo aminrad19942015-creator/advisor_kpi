@@ -25,16 +25,37 @@ function json(body:any,status=200){
   });
 }
 
+let connectorHashCache:{value:string,expires:number}|null=null;
+
+async function hashText(value:string){
+  const bytes=new TextEncoder().encode(value);
+  const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
+  return Array.from(digest).map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+
 async function tokenMatches(req:Request){
-  const expected=String(Deno.env.get('CRM_CONNECTOR_TOKEN')||'');
-  if(!expected)return {ok:false,reason:'not_configured'};
   const supplied=String(req.headers.get('x-crm-connector-token')||'');
   if(!supplied)return {ok:false,reason:'missing'};
 
+  let expectedHash='';
+  const now=Date.now();
+  if(connectorHashCache&&connectorHashCache.expires>now){
+    expectedHash=connectorHashCache.value;
+  }else{
+    const rows=await tursoSelect(
+      "SELECT token_sha256 FROM private.dashboard_rpc_auth WHERE id='crm-connector' LIMIT 1"
+    ).catch(()=>[]);
+    expectedHash=String(rows?.[0]?.token_sha256||'');
+    if(expectedHash)connectorHashCache={value:expectedHash,expires:now+300000};
+  }
+
+  if(!expectedHash)return {ok:false,reason:'not_configured'};
+  const got=await hashText(supplied);
+
   const enc=new TextEncoder();
   const [a,b]=await Promise.all([
-    crypto.subtle.digest('SHA-256',enc.encode(expected)),
-    crypto.subtle.digest('SHA-256',enc.encode(supplied))
+    crypto.subtle.digest('SHA-256',enc.encode(expectedHash)),
+    crypto.subtle.digest('SHA-256',enc.encode(got))
   ]);
   const aa=new Uint8Array(a),bb=new Uint8Array(b);
   if(aa.length!==bb.length)return {ok:false,reason:'mismatch'};
@@ -146,7 +167,7 @@ Deno.serve(async (req:Request)=>{
       return json({
         ok:true,
         service:'connector-api',
-        version:1,
+        version:2,
         routes:['crm-shadow','crm-activity','crm-config','connector-command']
       });
     }
