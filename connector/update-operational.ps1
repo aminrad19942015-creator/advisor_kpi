@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 $connectorDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $connectorDir
 
-$base = "https://raw.githubusercontent.com/aminrad19942015-creator/advisor_kpi/main/connector"
+$base = "https://raw.githubusercontent.com/aminrad19942015-creator/advisor_kpi/gas-dashboard-v1/connector"
 $files = @(
   "sync.js",
   "dashboard-http.js",
