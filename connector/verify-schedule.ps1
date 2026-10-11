@@ -71,6 +71,33 @@ if (-not $open.Settings.StartWhenAvailable -or -not $morning.Settings.StartWhenA
 $openAction = $open.Actions | Select-Object -First 1
 $morningAction = $morning.Actions | Select-Object -First 1
 
+$expectedOpenCmd = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "run.cmd"
+$expectedMorningCmd = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "run-morning.cmd"
+
+function Assert-ActionPath([string]$TaskName,$Action,[string]$ExpectedCmd) {
+  if ([string]$Action.Execute -ne "cmd.exe") {
+    throw "$TaskName must execute cmd.exe; found $($Action.Execute)."
+  }
+  $args = [string]$Action.Arguments
+  if ($args -notlike "*$ExpectedCmd*") {
+    throw "$TaskName action points to the wrong Connector path. Expected: $ExpectedCmd. Actual: $args"
+  }
+}
+
+Assert-ActionPath $openName $openAction $expectedOpenCmd
+Assert-ActionPath $morningName $morningAction $expectedMorningCmd
+
+foreach ($trigger in @($open.Triggers) + @($morning.Triggers)) {
+  $dt = [datetime]$trigger.StartBoundary
+  if ($dt.Second -ne 0) {
+    throw "Trigger seconds must be 00; found $($dt.ToString('HH:mm:ss')) in $($trigger.StartBoundary)."
+  }
+}
+
+if ($open.State -eq 'Disabled' -or $morning.State -eq 'Disabled') {
+  throw "Both CRM scheduled tasks must be enabled."
+}
+
 Write-Host ""
 Write-Host "=== SCHEDULE VERIFICATION ==="
 Write-Host "$morningName"
