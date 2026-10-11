@@ -9,7 +9,7 @@ if (-not (Test-Path $envFile) -or -not (Test-Path $packageFile)) {
   throw "Run this script from the real Connector folder. Missing .env.local and/or package.json. Current folder: $connectorDir"
 }
 
-$releaseRef = "5312c9f0cc7dbc530c1b9aaee4ca7a67f2aa161d"
+$releaseRef = "29ff139797dc38f44eaf7a2c51933fce92e9c268"
 $base = "https://raw.githubusercontent.com/aminrad19942015-creator/advisor_kpi/$releaseRef/connector"
 
 $files = @(
