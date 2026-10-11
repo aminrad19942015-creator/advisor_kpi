@@ -29,6 +29,7 @@ $files = @(
   "verify-schedule.ps1",
   "cutover-supabase.ps1",
   "verify-supabase-endpoints.ps1",
+  "preflight-supabase-auth.ps1",
   "show-token-hash.ps1"
 )
 
