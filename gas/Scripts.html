@@ -126,7 +126,7 @@ const TREND_METRICS={
  tickets:{label:'تیکت',line:'#ff8b8b',avg:'#6edbd0'},
  total:{label:'فعالیت کل',line:'#ffffff',avg:'#f0b95a'}
 };
-const trendMetricState={weekly:'total',monthly:'total'};
+const trendMetricState={weekly:'total',monthly:'total',reportMonth:'total'};
 function smoothPath(points){
  if(!points.length)return '';
  if(points.length===1)return `M ${points[0][0]} ${points[0][1]}`;
@@ -190,9 +190,10 @@ const filterState={
   open:{advisor:[],seniorLead:[],role:[],team:[],personUnit:[],age:'',leadType:['حقیقی'],nextCallReason:[],customerRank:[],campaign:['Ayar','LeadAdvice'],source:[],lastStatus:[]},
   daily:{advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]},
   weekly:{advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]},
-  monthly:{advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]}
+  monthly:{advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]},
+  reportMonth:{advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]}
 };
-let filterOptions={team:{},open:{},periodCampaign:{daily:[],weekly:[],monthly:[]}};
+let filterOptions={team:{},open:{},periodCampaign:{daily:[],weekly:[],monthly:[],reportMonth:[]}};
 
 function syncedTeamOptions(current,mapping){
   const members=(filterOptions.team&&filterOptions.team.members)||[];
@@ -221,6 +222,7 @@ function resetAllFilterState(){
   filterState.daily={advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]};
   filterState.weekly={advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]};
   filterState.monthly={advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]};
+  filterState.reportMonth={advisor:[],teamLead:[],seniorLead:[],team:[],role:[],campaign:[]};
 }
 resetAllFilterState();
 
@@ -482,6 +484,12 @@ function applyOpenFilters(){
   setPageLoading('openPage',true);
   google.script.run.withSuccessHandler(s=>{state.data.open=s;renderOpen();setPageLoading('openPage',false)}).getOpenFilteredSummary(filterState.open);
 }
+function periodTitle(period){
+  return period==='daily'?'فعالیت دیروز':
+    period==='weekly'?'فعالیت هفته':
+    period==='monthly'?'فعالیت ماهانه':
+    period==='reportMonth'?'گزارش یک ماهه':'گزارش فعالیت';
+}
 const periodDebounce={};
 function debouncedApplyPeriod(period){clearTimeout(periodDebounce[period]);periodDebounce[period]=setTimeout(()=>applyPeriodFilters(period),300)}
 function bindPeriodFilters(period){
@@ -500,7 +508,7 @@ function applyPeriodFilters(period){
   setPageLoading(pageId,true);
   google.script.run
     .withFailureHandler(e=>{setPageLoading(pageId,false);toast('خطا در اعمال فیلتر: '+(e?.message||e||'خطای نامشخص'));})
-    .withSuccessHandler(s=>{state.data[period]=s;renderPeriod(period,pageId,period==='daily'?'فعالیت دیروز':period==='weekly'?'فعالیت هفته':'فعالیت ماهانه');bindChartHover($(pageId));setPageLoading(pageId,false)})
+    .withSuccessHandler(s=>{state.data[period]=s;renderPeriod(period,pageId,periodTitle(period));bindChartHover($(pageId));setPageLoading(pageId,false)})
     .getFilteredPeriodSummary(period,filterState[period]);
 }
 
@@ -635,7 +643,7 @@ function renderPeriod(period,pageId,title){
  const s=state.data[period]||{},k=s.kpis||{},d=s.dimensions||{};
  const advisorSelected=(filterState[period]?.advisor||[]).length>0;
  $(pageId).innerHTML=`
-  ${reportBadge(period==='daily'?'تاریخ گزارش':'بازه گزارش',rangeText(s),state.data?.meta?.crmActivityLastSyncAt)}
+   ${reportBadge(period==='daily'?'تاریخ گزارش':period==='reportMonth'?'ماه گزارش':'بازه گزارش',period==='reportMonth'?(state.data?.meta?.crmMonthReportLabel||rangeText(s)):rangeText(s),period==='reportMonth'?state.data?.meta?.crmMonthReportLastSyncAt:state.data?.meta?.crmActivityLastSyncAt)}
   <div class="topbar"><div class="title"><h2>${title}</h2><p>نمای مدیریتی یکپارچه فعالیت، روند روزانه و سرانه عملکرد مشاوران</p></div><div class="topbar-actions"><button class="export-btn" data-export-tab="${period}" onclick="exportDashboardTab('${period}')">خروجی اکسل</button><div class="pill">۴ منبع ${period==='daily'?'روزانه':period==='weekly'?'هفتگی':'ماهانه'}</div></div></div>
   ${periodFiltersHtml(period)}
   ${activityCards(k,period)}
@@ -786,7 +794,7 @@ async function exportDashboardTab(tab){
      appendExportSheet(XLSX,wb,'سرنخ های باز',rows);
      appendExportSheet(XLSX,wb,'فیلترها',exportFilterRows(filterState.open||{}));
      filename='open-leads.xlsx';
-   }else if(['daily','weekly','monthly'].includes(tab)){
+   }else if(['daily','weekly','monthly','reportMonth'].includes(tab)){
      const filters=filterState[tab]||{};
      appendExportSheet(XLSX,wb,'خلاصه مشاوران',exportAdvisorRows(state.data?.[tab]?.advisors||[]));
      const specs=[
@@ -801,7 +809,7 @@ async function exportDashboardTab(tab){
        appendExportSheet(XLSX,wb,sheet,exportTranslateRows(rows));
      }
      appendExportSheet(XLSX,wb,'فیلترها',exportFilterRows(filters));
-     filename=tab==='daily'?'فعالیت دیروز.xlsx':tab==='weekly'?'فعالیت هفته.xlsx':'فعالیت ماهانه.xlsx';
+      filename=tab==='daily'?'فعالیت دیروز.xlsx':tab==='weekly'?'فعالیت هفته.xlsx':tab==='monthly'?'فعالیت ماهانه.xlsx':'گزارش یک ماهه.xlsx';
    }else{
      throw new Error('تب خروجی نامعتبر است.');
    }
@@ -864,7 +872,7 @@ function loadAdvisorTrend(period,advisor){
  }).getAdvisorTrend(period,advisor);
 }
 
-const periodInitialLoaded={daily:false,weekly:false,monthly:false};
+const periodInitialLoaded={daily:false,weekly:false,monthly:false,reportMonth:false};
 function loadInitialPeriod(period){
  const pageId=period+'Page';
  if(periodInitialLoaded[period])return;
@@ -877,7 +885,7 @@ function loadInitialPeriod(period){
       filterOptions.periodCampaign[period]=payload.campaignOptions||[];
       state.data[period]=payload.summary||{};
       periodInitialLoaded[period]=true;
-      renderPeriod(period,pageId,period==='daily'?'فعالیت دیروز':period==='weekly'?'فعالیت هفته':'فعالیت ماهانه');
+      renderPeriod(period,pageId,periodTitle(period));
       bindChartHover($(pageId));
       setPageLoading(pageId,false);
       healthBanner('danger','اتصال موقتاً در دسترس نیست؛ آخرین Snapshot سالم نمایش داده می‌شود.','ذخیره مرورگر: '+new Date(snap.savedAt).toLocaleString('fa-IR'));
@@ -904,7 +912,7 @@ function loadInitialPeriod(period){
     filterOptions.periodCampaign[period]=payload?.campaignOptions||[];
     state.data[period]=payload?.summary||{};
     periodInitialLoaded[period]=true;
-    renderPeriod(period,pageId,period==='daily'?'فعالیت دیروز':period==='weekly'?'فعالیت هفته':'فعالیت ماهانه');
+    renderPeriod(period,pageId,periodTitle(period));
     bindChartHover($(pageId));
     setPageLoading(pageId,false);
   })
@@ -916,6 +924,7 @@ function switchPage(id){
  if(id==='dailyPage')loadInitialPeriod('daily');
  if(id==='weeklyPage')loadInitialPeriod('weekly');
  if(id==='monthlyPage')loadInitialPeriod('monthly');
+  if(id==='reportMonthPage')loadInitialPeriod('reportMonth');
 }
 document.querySelectorAll('.nav-item').forEach(b=>b.onclick=()=>switchPage(b.dataset.page));
 
