@@ -656,8 +656,6 @@ function renderPeriod(period,pageId,title){
  document.querySelectorAll(`#${pageId} [data-status-kpi]`).forEach(el=>el.onclick=()=>loadLeadStatusKpiDetail(el.dataset.period,el.dataset.statusKpi));
  document.querySelectorAll(`#${pageId} [data-period-kpi]`).forEach(el=>el.onclick=()=>loadPeriodKpiDetail(el.dataset.period,el.dataset.periodKpi,el.dataset.kpiTitle||'جزئیات شاخص'));
  document.querySelectorAll(`#${pageId} [data-source]`).forEach(panel=>bindBars(panel,v=>loadDimension(period,panel.dataset.source,panel.dataset.field,v)));
-  bindTrendChartHover($(period+'TrendChart'));
- }
  bindPeriodFilters(period);
  makeTableSortable($(pageId));
 }
