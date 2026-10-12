@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - gas-dashboard-v1
+      - monthly-report-v1
   pull_request:
     branches:
       - main
@@ -50,3 +51,9 @@ jobs:
 
       - name: Validate GAS manifest JSON
         run: node -e "JSON.parse(require('fs').readFileSync('gas/appsscript.json','utf8')); console.log('GAS manifest JSON OK')"
+
+      - name: Validate previous-month connector
+        run: |
+          node --check connector/persian-month.js
+          node --check connector/report-month-sync.js
+          node connector/test-persian-month.js
