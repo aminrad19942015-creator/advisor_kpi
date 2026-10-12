@@ -88,7 +88,11 @@ async function cachedPeriodInitial(period:string,filters:any){
 
   if(!periodFiltersAreInitial(filters))return compute();
 
-  const sourceVersion=await versionValue(['data_version','crm_activity_last_sync_at','admin_revision']);
+  const sourceVersion=await versionValue(
+    period==='reportMonth'
+      ? ['data_version','crm_month_report_last_sync_at','admin_revision']
+      : ['data_version','crm_activity_last_sync_at','admin_revision']
+  );
   const cached=await persistentCached(
     'period-initial:'+String(period||''),
     sourceVersion,
@@ -107,7 +111,10 @@ async function dashboardDiagnostics(){
         'data_version','last_sync_at','crm_shadow_last_sync_at','crm_shadow_row_count',
         'crm_activity_last_sync_at','crm_activity_lead_opp_last_sync_at',
         'crm_activity_calls_last_sync_at','crm_activity_tickets_last_sync_at',
-        'crm_activity_counts','crm_activity_range_start','crm_activity_range_end'
+        'crm_activity_counts','crm_activity_range_start','crm_activity_range_end',
+        'crm_month_report_last_sync_at','crm_month_report_source_checked_at',
+        'crm_month_report_range_start','crm_month_report_range_end',
+        'crm_month_report_period','crm_month_report_label','crm_month_report_counts'
       )
     `),
     tursoSelect(`
@@ -125,7 +132,11 @@ async function dashboardDiagnostics(){
         (SELECT COUNT(*) FROM monthly_calls) AS monthly_calls,
         (SELECT COUNT(*) FROM daily_tickets) AS daily_tickets,
         (SELECT COUNT(*) FROM weekly_tickets) AS weekly_tickets,
-        (SELECT COUNT(*) FROM monthly_tickets) AS monthly_tickets
+        (SELECT COUNT(*) FROM monthly_tickets) AS monthly_tickets,
+        (SELECT COUNT(*) FROM report_month_leads) AS report_month_leads,
+        (SELECT COUNT(*) FROM report_month_opportunities) AS report_month_opportunities,
+        (SELECT COUNT(*) FROM report_month_calls) AS report_month_calls,
+        (SELECT COUNT(*) FROM report_month_tickets) AS report_month_tickets
     `),
     tursoSelect(`
       SELECT COUNT(*) AS chunks,MIN(created_at) AS oldest,MAX(created_at) AS newest
@@ -160,6 +171,9 @@ async function dashboardDiagnostics(){
   const currentActivityCounts=(()=>{
     try{return JSON.parse(meta.crm_activity_counts||'{}')}catch{return {}}
   })();
+  const monthReportCounts=(()=>{
+    try{return JSON.parse(meta.crm_month_report_counts||'{}')}catch{return {}}
+  })();
 
   return {
     ok:
@@ -183,6 +197,18 @@ async function dashboardDiagnostics(){
     },
     counts:Object.fromEntries(Object.entries(counts).map(([k,v])=>[k,Number(v||0)])),
     consistency,
+    monthReport:{
+      ready:!!meta.crm_month_report_last_sync_at,
+      lastSyncAt:meta.crm_month_report_last_sync_at||'',
+      sourceCheckedAt:meta.crm_month_report_source_checked_at||'',
+      period:meta.crm_month_report_period||'',
+      label:meta.crm_month_report_label||'',
+      range:{
+        start:meta.crm_month_report_range_start||'',
+        end:meta.crm_month_report_range_end||''
+      },
+      counts:monthReportCounts
+    },
     staging:{
       chunks:Number(stagingRows?.[0]?.chunks||0),
       oldest:stagingRows?.[0]?.oldest||null,
@@ -229,7 +255,7 @@ const handlers:Record<string,Handler>={
       if(Number(offset||0)>0)return [];
       return getOpenExportRows(filters||{});
     }
-    if(['daily','weekly','monthly'].includes(t)){
+    if(['daily','weekly','monthly','reportMonth'].includes(t)){
       return getPeriodExportChunk(t,String(dataset||''),filters||{},Number(offset||0),Number(limit||10000));
     }
     throw new Error('تب خروجی نامعتبر است.');
@@ -308,7 +334,7 @@ Deno.serve(async (req:Request)=>{
       ok:true,
       service:'dashboard-rpc',
       provider:'Supabase',
-      version:10,
+      version:11,
       methods:Object.keys(handlers).length
     },200,requestId);
   }
