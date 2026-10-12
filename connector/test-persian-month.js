@@ -9,7 +9,7 @@ function atTehranNoon(isoBoundary){
 const mehr20=new Date('2026-10-12T10:00:00.000Z');
 const r=previousPersianMonthRange(mehr20);
 assert.strictEqual(r.reportKey,'1405-06');
-assert.strictEqual(r.label,'شهریور 1405');
+assert.strictEqual(r.label,'شهریور ۱۴۰۵');
 assert.strictEqual(r.currentPersianDay,20);
 assert.deepStrictEqual(persianParts(atTehranNoon(r.start)),{year:1405,month:6,day:1});
 assert.deepStrictEqual(persianParts(atTehranNoon(r.end)),{year:1405,month:7,day:1});
