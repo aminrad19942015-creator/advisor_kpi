@@ -10,8 +10,8 @@ if ($task.Triggers.Count -ne 1) {
 
 $trigger = $task.Triggers | Select-Object -First 1
 $time = ([datetime]$trigger.StartBoundary).ToString("HH:mm")
-if ($time -ne "16:30") {
-  throw "$taskName must check at 16:30; found $time."
+if ($time -ne "15:30") {
+  throw "$taskName must check at 15:30; found $time."
 }
 if (([datetime]$trigger.StartBoundary).Second -ne 0) {
   throw "$taskName trigger seconds must be 00."
