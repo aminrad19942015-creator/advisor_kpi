@@ -79,11 +79,12 @@ async function cachedInitialPayload(openFilters:any){
 
 async function cachedPeriodInitial(period:string,filters:any){
   const compute=async ()=>{
-    const [campaignOptions,summary]=await Promise.all([
+    const [campaignOptions,summary,meta]=await Promise.all([
       getPeriodCampaignOptions(period),
-      getFilteredPeriodSummary(period,filters||{})
+      getFilteredPeriodSummary(period,filters||{}),
+      getMeta()
     ]);
-    return {campaignOptions,summary};
+    return {campaignOptions,summary,meta};
   };
 
   if(!periodFiltersAreInitial(filters))return compute();
