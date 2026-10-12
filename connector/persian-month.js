@@ -41,6 +41,7 @@ function findGregorianDateForPersian(year,month,day){
 }
 
 function pad2(v){return String(v).padStart(2,'0');}
+function faDigits(v){return String(v).replace(/\d/g,d=>'۰۱۲۳۴۵۶۷۸۹'[Number(d)]);}
 
 function tehranMidnightIso(g){
   const local=`${g.year}-${pad2(g.month)}-${pad2(g.day)}T00:00:00${TEHRAN_OFFSET}`;
@@ -64,7 +65,7 @@ function previousPersianMonthRange(now=new Date()){
 
   return {
     reportKey,
-    label:`${PERSIAN_MONTHS[month]} ${year}`,
+    label:`${PERSIAN_MONTHS[month]} ${faDigits(year)}`,
     persianYear:year,
     persianMonth:month,
     currentPersianDay:current.day,
