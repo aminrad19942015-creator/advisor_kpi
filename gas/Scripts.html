@@ -884,6 +884,7 @@ function loadInitialPeriod(period){
       const payload=snap.payload;
       filterOptions.periodCampaign[period]=payload.campaignOptions||[];
       state.data[period]=payload.summary||{};
+      if(payload.meta)state.data.meta={...(state.data.meta||{}),...payload.meta};
       periodInitialLoaded[period]=true;
       renderPeriod(period,pageId,periodTitle(period));
       bindChartHover($(pageId));
@@ -911,6 +912,7 @@ function loadInitialPeriod(period){
     }
     filterOptions.periodCampaign[period]=payload?.campaignOptions||[];
     state.data[period]=payload?.summary||{};
+    if(payload?.meta)state.data.meta={...(state.data.meta||{}),...payload.meta};
     periodInitialLoaded[period]=true;
     renderPeriod(period,pageId,periodTitle(period));
     bindChartHover($(pageId));
