@@ -37,7 +37,10 @@ Open Leads:
 - 15:00
 
 Historical activity (Daily / Weekly / Monthly):
-- 07:00 only
+- 07:30 only
+
+The 07:00 Open Leads refresh is intentionally separated from the 07:30 activity refresh.
+If the 07:30 activity run is missed, later Open Leads triggers recover stale activity components.
 
 Friday:
 - no automatic CRM refresh
