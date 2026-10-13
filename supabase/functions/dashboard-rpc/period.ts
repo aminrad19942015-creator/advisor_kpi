@@ -218,6 +218,8 @@ export async function getPeriodKpiDetails(period:string,type:string,filters:any=
  if(type==='noResponse')extra=" AND REPLACE(TRIM(COALESCE(last_status,'')),' ','') IN ('عدمپاسخ(2بار)','عدمپاسخ(۲بار)')";
  if(type==='oppLead')extra=" AND registration_type='LEAD'";
  if(type==='opp')extra=" AND registration_type='OPP'";
+ if(type==='calls')extra=' AND NOT ('+AML_CONDITION_SQL+')';
+ if(type==='aml')extra=' AND '+AML_CONDITION_SQL;
  if(type==='t8')extra=" AND UPPER(COALESCE(queue,''))='T8'";
  const rows=await tursoSelect(`SELECT * FROM ${table(period,source)}${w.where}${extra} LIMIT 5000`,w.args);
  if(source==='call')return rows.map((r:any)=>{const {phone_number,destination_number,...rest}=r;return {...rest,'شماره تماس مشتری':phone_number||destination_number||''}});
