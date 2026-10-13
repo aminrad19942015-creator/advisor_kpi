@@ -5,6 +5,12 @@ const STATUS_NORM_SQL = "REPLACE(TRIM(COALESCE(last_status,'')),' ','')";
 // Therefore every row here is a closed lead (Qualified or Disqualified), regardless of status reason.
 const CLOSED_CONDITION_SQL = '1=1';
 const TALKED_CONDITION_SQL = `${STATUS_NORM_SQL} NOT IN ('عدمپاسخ(2بار)','عدمپاسخ(۲بار)','عدمتعیینوضعیتدرزمانمقرر')`;
+const AML_SUBJECT_NORM_SQL = "REPLACE(REPLACE(TRIM(COALESCE(subject,'')),'ي','ی'),'ك','ک')";
+const AML_CONDITION_SQL = `${AML_SUBJECT_NORM_SQL} IN (
+ 'تکمیل فرم شناسایی مضاعف',
+ 'بروز رسانی اطلاعات فرم مشخصات',
+ 'بروز رسانی اطلاعات مشخصات و تکمیل فرم شناسایی'
+)`;
 const norm=(v:any)=>!v?[]:(Array.isArray(v)?v:[v]).filter(Boolean);
 const normPersonName=(v:any)=>String(v??'').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[\u200c\u200f\u202a-\u202e]/g,' ').replace(/\s+/g,' ').trim();
 const first=(rows:any[])=>rows?.[0]||{};
@@ -71,13 +77,27 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
     AVG(CASE WHEN ${CLOSED_CONDITION_SQL} AND NULLIF(created_date,'') IS NOT NULL AND NULLIF(last_modified_date,'') IS NOT NULL AND last_modified_date::timestamptz>=created_date::timestamptz THEN EXTRACT(EPOCH FROM (last_modified_date::timestamptz-created_date::timestamptz))/86400.0 END) AS "closeAvg"
     FROM ${L}${lw.where}`,args:lw.args},
   {key:'oppKpi',sql:`SELECT SUM(CASE WHEN registration_type='LEAD' THEN 1 ELSE 0 END) AS "oppLead",SUM(CASE WHEN registration_type='OPP' THEN 1 ELSE 0 END) opp FROM ${O}${ow.where}`,args:ow.args},
-  {key:'callKpi',sql:`SELECT COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8,COUNT(DISTINCT CASE WHEN COALESCE(lead_number,'')<>'' THEN "user"||'|'||lead_number END) AS "uniqueCalls" FROM ${C}${cw.where}`,args:cw.args},
-  {key:'repeatCalls',sql:`SELECT COALESCE(SUM(n-1),0) AS "repeatCalls" FROM (SELECT COUNT(*) n FROM ${C}${cw.where} AND COALESCE(lead_number,'')<>'' GROUP BY "user",lead_number HAVING COUNT(*)>1)`,args:cw.args},
+  {key:'callKpi',sql:`SELECT
+    SUM(CASE WHEN NOT (${AML_CONDITION_SQL}) THEN 1 ELSE 0 END) calls,
+    SUM(CASE WHEN ${AML_CONDITION_SQL} THEN 1 ELSE 0 END) aml,
+    SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8,
+    COUNT(DISTINCT CASE WHEN NOT (${AML_CONDITION_SQL}) AND COALESCE(lead_number,'')<>'' THEN "user"||'|'||lead_number END) AS "uniqueCalls"
+    FROM ${C}${cw.where}`,args:cw.args},
+  {key:'repeatCalls',sql:`SELECT COALESCE(SUM(n-1),0) AS "repeatCalls" FROM (
+    SELECT COUNT(*) n FROM ${C}${cw.where}
+    AND NOT (${AML_CONDITION_SQL})
+    AND COALESCE(lead_number,'')<>''
+    GROUP BY "user",lead_number HAVING COUNT(*)>1
+   )`,args:cw.args},
   {key:'ticketKpi',sql:`SELECT COUNT(*) tickets FROM ${T}${tw.where}`,args:tw.args},
   {key:'days',sql:`SELECT "day" FROM (SELECT (last_modified_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day" FROM ${L}${lw.where} AND last_modified_date<>'' UNION SELECT (created_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day" FROM ${O}${ow.where} AND created_date<>'' UNION SELECT (start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day" FROM ${C}${cw.where} AND start_date<>'' UNION SELECT (closed_at::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day" FROM ${T}${tw.where} AND closed_at<>'') WHERE "day" IS NOT NULL ORDER BY "day"`,args:[...lw.args,...ow.args,...cw.args,...tw.args]},
   {key:'leadByAdvisor',sql:`SELECT owner name,SUM(CASE WHEN ${CLOSED_CONDITION_SQL} THEN 1 ELSE 0 END) leads,SUM(CASE WHEN ${TALKED_CONDITION_SQL} THEN 1 ELSE 0 END) talked FROM ${L}${lw.where} AND COALESCE(owner,'')<>'' GROUP BY owner`,args:lw.args},
   {key:'oppByAdvisor',sql:`SELECT creator name,SUM(CASE WHEN registration_type='OPP' THEN 1 ELSE 0 END) opps FROM ${O}${ow.where} AND COALESCE(creator,'')<>'' GROUP BY creator`,args:ow.args},
-  {key:'callByAdvisor',sql:`SELECT "user" name,COUNT(*) calls,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C}${cw.where} AND COALESCE("user",'')<>'' GROUP BY "user"`,args:cw.args},
+  {key:'callByAdvisor',sql:`SELECT "user" name,
+    SUM(CASE WHEN NOT (${AML_CONDITION_SQL}) THEN 1 ELSE 0 END) calls,
+    SUM(CASE WHEN ${AML_CONDITION_SQL} THEN 1 ELSE 0 END) aml,
+    SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8
+    FROM ${C}${cw.where} AND COALESCE("user",'')<>'' GROUP BY "user"`,args:cw.args},
   {key:'ticketByAdvisor',sql:`SELECT owner name,COUNT(*) tickets FROM ${T}${tw.where} AND COALESCE(owner,'')<>'' GROUP BY owner`,args:tw.args},
   {key:'attendanceByAdvisor',sql:`SELECT name,COUNT(*) AS "attendanceDays" FROM (
     SELECT "user" name,(start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day"
@@ -121,17 +141,17 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
   const name=people[raw]?raw:canonicalByNorm.get(normPersonName(raw));
   if(!name)return null;
   const p=people[name]||{};
-  return advisorMap[name]||(advisorMap[name]={name,teamLead:p.teamLead||'',seniorLead:p.seniorLead||'',team:p.team||'',role:p.role||'',leads:0,talked:0,opps:0,calls:0,t8:0,tickets:0,attendanceDays:0});
+  return advisorMap[name]||(advisorMap[name]={name,teamLead:p.teamLead||'',seniorLead:p.seniorLead||'',team:p.team||'',role:p.role||'',leads:0,talked:0,opps:0,calls:0,aml:0,t8:0,tickets:0,attendanceDays:0});
  };
  for(const r of q.leadByAdvisor||[]){const x=ensure(r.name);if(x){x.leads=Number(r.leads||0);x.talked=Number(r.talked||0)}}
  for(const r of q.oppByAdvisor||[]){const x=ensure(r.name);if(x)x.opps=Number(r.opps||0)}
- for(const r of q.callByAdvisor||[]){const x=ensure(r.name);if(x){x.calls=Number(r.calls||0);x.t8=Number(r.t8||0)}}
+ for(const r of q.callByAdvisor||[]){const x=ensure(r.name);if(x){x.calls=Number(r.calls||0);x.aml=Number(r.aml||0);x.t8=Number(r.t8||0)}}
  for(const r of q.ticketByAdvisor||[]){const x=ensure(r.name);if(x)x.tickets=Number(r.tickets||0)}
  for(const r of q.attendanceByAdvisor||[]){const x=ensure(r.name);if(x)x.attendanceDays=Number(r.attendanceDays||0)}
- const advisors=Object.values(advisorMap).map((r:any)=>{const total=Number(r.talked||0)+Number(r.opps||0)+Number(r.t8||0)+Number(r.tickets||0);const attendanceDays=Math.max(1,Number(r.attendanceDays||0));return {...r,attendanceDays,total,callAvg:Number(r.calls||0)/attendanceDays,leadAvg:Number(r.leads||0)/attendanceDays,talkedAvg:Number(r.talked||0)/attendanceDays,oppAvg:Number(r.opps||0)/attendanceDays,t8Avg:Number(r.t8||0)/attendanceDays,ticketAvg:Number(r.tickets||0)/attendanceDays,activityAvg:total/attendanceDays}}).sort((a:any,b:any)=>b.total-a.total);
- const handled=Number(lk.handled||0),closed=Number(lk.closed||0),talked=Number(lk.talked||0),noStatusCount=Number(lk.noStatusCount||0),noResponseCount=Number(lk.noResponseCount||0),oppLead=Number(ok.oppLead||0),opp=Number(ok.opp||0),calls=Number(ck.calls||0),t8=Number(ck.t8||0),tickets=Number(tk.tickets||0),uniqueCalls=Number(ck.uniqueCalls||0),repeatCalls=Number(rk.repeatCalls||0);
+ const advisors=Object.values(advisorMap).map((r:any)=>{const total=Number(r.talked||0)+Number(r.opps||0)+Number(r.aml||0)+Number(r.t8||0)+Number(r.tickets||0);const attendanceDays=Math.max(1,Number(r.attendanceDays||0));return {...r,attendanceDays,total,callAvg:Number(r.calls||0)/attendanceDays,amlAvg:Number(r.aml||0)/attendanceDays,leadAvg:Number(r.leads||0)/attendanceDays,talkedAvg:Number(r.talked||0)/attendanceDays,oppAvg:Number(r.opps||0)/attendanceDays,t8Avg:Number(r.t8||0)/attendanceDays,ticketAvg:Number(r.tickets||0)/attendanceDays,activityAvg:total/attendanceDays}}).sort((a:any,b:any)=>b.total-a.total);
+ const handled=Number(lk.handled||0),closed=Number(lk.closed||0),talked=Number(lk.talked||0),noStatusCount=Number(lk.noStatusCount||0),noResponseCount=Number(lk.noResponseCount||0),oppLead=Number(ok.oppLead||0),opp=Number(ok.opp||0),calls=Number(ck.calls||0),aml=Number(ck.aml||0),t8=Number(ck.t8||0),tickets=Number(tk.tickets||0),uniqueCalls=Number(ck.uniqueCalls||0),repeatCalls=Number(rk.repeatCalls||0);
  const noStatusRate=handled?noStatusCount/handled*100:0,noResponseRate=handled?noResponseCount/handled*100:0;
- return {period,days,dayCount,unitAdvisorCount:(q.allTeamMembers||[]).length,kpis:{total:talked+opp+t8+tickets,handled,closed,talked,noStatusCount,noStatusRate,noResponseCount,noResponseRate,oppLead,opp,calls,t8,tickets,closeAvg:lk.closeAvg==null?null:Number(lk.closeAvg),uniqueCalls,repeatCalls,memberCount,callAvg:calls/dayCount,closedAvg:closed/dayCount,talkedAvg:talked/dayCount,callAvgPerPerson:memberCount?(calls/dayCount)/memberCount:0,closedAvgPerPerson:memberCount?(closed/dayCount)/memberCount:0,talkedAvgPerPerson:memberCount?(talked/dayCount)/memberCount:0},advisors,dimensions:{leadState:pairs(q.leadState),rank:pairs(q.rank),leadSource:pairs(q.leadSource),campaign:pairs(q.campaign),oppKind:pairs(q.oppKind),oppStatus:pairs(q.oppStatus),callSubject:pairs(q.callSubject),leadTicketTopic:pairs(q.leadTicketTopic),ticketState:pairs(q.ticketState),ticketSubject:pairs(q.ticketSubject)}};
+ return {period,days,dayCount,unitAdvisorCount:(q.allTeamMembers||[]).length,kpis:{total:talked+opp+aml+t8+tickets,handled,closed,talked,noStatusCount,noStatusRate,noResponseCount,noResponseRate,oppLead,opp,calls,aml,t8,tickets,closeAvg:lk.closeAvg==null?null:Number(lk.closeAvg),uniqueCalls,repeatCalls,memberCount,callAvg:calls/dayCount,amlAvg:aml/dayCount,closedAvg:closed/dayCount,talkedAvg:talked/dayCount,callAvgPerPerson:memberCount?(calls/dayCount)/memberCount:0,amlAvgPerPerson:memberCount?(aml/dayCount)/memberCount:0,closedAvgPerPerson:memberCount?(closed/dayCount)/memberCount:0,talkedAvgPerPerson:memberCount?(talked/dayCount)/memberCount:0},advisors,dimensions:{leadState:pairs(q.leadState),rank:pairs(q.rank),leadSource:pairs(q.leadSource),campaign:pairs(q.campaign),oppKind:pairs(q.oppKind),oppStatus:pairs(q.oppStatus),callSubject:pairs(q.callSubject),leadTicketTopic:pairs(q.leadTicketTopic),ticketState:pairs(q.ticketState),ticketSubject:pairs(q.ticketSubject)}};
 }
 
 export async function getPeriodExportData(period:string,filters:any={}){
@@ -164,7 +184,7 @@ export async function getActivityDetails(period:string,type:string,user:string,f
  let source:'lead'|'opp'|'call'|'ticket';
  if(type==='lead'||type==='talked')source='lead';
  else if(type==='opp')source='opp';
- else if(type==='call'||type==='t8')source='call';
+ else if(type==='call'||type==='aml'||type==='t8')source='call';
  else if(type==='ticket')source='ticket';
  else return [];
 
@@ -174,7 +194,9 @@ export async function getActivityDetails(period:string,type:string,user:string,f
  if(type==='lead')extra=' AND '+CLOSED_CONDITION_SQL;
  if(type==='talked')extra=' AND '+TALKED_CONDITION_SQL;
  if(type==='opp')extra=" AND registration_type='OPP'";
- if(type==='t8')extra=" AND UPPER(COALESCE(queue,''))='T8'";
+ if(type==='call')extra=' AND NOT ('+AML_CONDITION_SQL+')';
+  if(type==='aml')extra=' AND '+AML_CONDITION_SQL;
+  if(type==='t8')extra=" AND UPPER(COALESCE(queue,''))='T8'";
  const rows=await tursoSelect(`SELECT * FROM ${table(period,source)}${w.where}${extra} LIMIT 4000`,w.args);
  if(source==='call')return rows.map((r:any)=>{const {phone_number,destination_number,...rest}=r;return {...rest,'شماره تماس مشتری':phone_number||destination_number||''}});
  return rows;
@@ -184,7 +206,7 @@ export async function getPeriodKpiDetails(period:string,type:string,filters:any=
  let source:'lead'|'opp'|'call'|'ticket';
  if(['closed','talked','noStatus','noResponse'].includes(type))source='lead';
  else if(type==='oppLead'||type==='opp')source='opp';
- else if(type==='calls'||type==='t8')source='call';
+ else if(type==='calls'||type==='aml'||type==='t8')source='call';
  else if(type==='tickets')source='ticket';
  else throw new Error('نوع KPI نامعتبر است.');
 
