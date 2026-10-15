@@ -107,6 +107,19 @@ export async function getOpenExportRows(filters:any={}){
  const args:any[]=[];let where=' WHERE 1=1';
  where+=sqlIn('o.owner',norm(filters.advisor),args);
  where+=sqlIn('o.lead_type',norm(filters.leadType),args);
+ const reasons=norm(filters.nextCallReason);
+ if(reasons.length){
+  const hasBlank=reasons.includes('بدون تسک'),normal=reasons.filter((x:any)=>x!=='بدون تسک'),parts:string[]=[];
+  if(normal.length){const qs=normal.map((v:any)=>{args.push(v);return '?'}).join(',');parts.push(`o.next_call_reason IN (${qs})`)}
+  if(hasBlank)parts.push("TRIM(COALESCE(o.next_call_reason,''))=''");
+  if(parts.length)where+=' AND ('+parts.join(' OR ')+')';
+ }
+ const age=String(filters.age||'');
+ if(age==='0-3')where+=' AND o.age_days BETWEEN 0 AND 3';
+ if(age==='4-7')where+=' AND o.age_days BETWEEN 4 AND 7';
+ if(age==='8-14')where+=' AND o.age_days BETWEEN 8 AND 14';
+ if(age==='15-30')where+=' AND o.age_days BETWEEN 15 AND 30';
+ if(age==='31+')where+=' AND o.age_days >= 31';
  where+=sqlIn('o.customer_rank',norm(filters.customerRank),args);
  where+=sqlIn('o.campaign',norm(filters.campaign),args);
  where+=sqlIn('o.last_status',norm(filters.lastStatus),args);
