@@ -78,16 +78,18 @@ async function cachedInitialPayload(openFilters:any){
 }
 
 async function cachedPeriodInitial(period:string,filters:any){
-  const compute=async ()=>{
-    const [campaignOptions,summary,meta]=await Promise.all([
+  const computeSummary=async ()=>{
+    const [campaignOptions,summary]=await Promise.all([
       getPeriodCampaignOptions(period),
-      getFilteredPeriodSummary(period,filters||{}),
-      getMeta()
+      getFilteredPeriodSummary(period,filters||{})
     ]);
-    return {campaignOptions,summary,meta};
+    return {campaignOptions,summary};
   };
 
-  if(!periodFiltersAreInitial(filters))return compute();
+  if(!periodFiltersAreInitial(filters)){
+    const [payload,meta]=await Promise.all([computeSummary(),getMeta()]);
+    return {...payload,meta};
+  }
 
   const sourceVersion=await versionValue(
     period==='reportMonth'
@@ -98,9 +100,10 @@ async function cachedPeriodInitial(period:string,filters:any){
     'period-initial:'+String(period||''),
     sourceVersion,
     43200,
-    compute
+    computeSummary
   );
-  return cached.value;
+  const meta=await getMeta();
+  return {...cached.value,meta};
 }
 
 async function dashboardDiagnostics(){
@@ -335,7 +338,7 @@ Deno.serve(async (req:Request)=>{
       ok:true,
       service:'dashboard-rpc',
       provider:'Supabase',
-      version:16,
+      version:17,
       methods:Object.keys(handlers).length
     },200,requestId);
   }
