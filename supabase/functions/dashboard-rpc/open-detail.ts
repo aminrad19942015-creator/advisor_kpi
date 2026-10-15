@@ -44,6 +44,15 @@ function applyOpenFilters(filters:any,args:any[]){
 }
 
 export async function getOpenLeadDetails(field:string,value:string,filters:any={}){
+ if(typeof value==='string'&&value.startsWith('__OPEN_FILTERS_V2__')){
+  try{
+   const envelope=JSON.parse(value.slice('__OPEN_FILTERS_V2__'.length));
+   value=String(envelope?.value??'');
+   filters=envelope?.filters||filters||{};
+  }catch{
+   throw new Error('پارامتر جزئیات سرنخ نامعتبر است.');
+  }
+ }
  const openSource=await operationalOpenLeadsSource();const openTable=openSource.table;
  const allowed:Record<string,string>={
   leadType:'lead_type',
