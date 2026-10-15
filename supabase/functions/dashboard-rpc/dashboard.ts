@@ -107,37 +107,41 @@ export async function getOpenExportRows(filters:any={}){
  const args:any[]=[];let where=' WHERE 1=1';
  where+=sqlIn('o.owner',norm(filters.advisor),args);
  where+=sqlIn('o.lead_type',norm(filters.leadType),args);
+ where+=sqlIn('o.customer_rank',norm(filters.customerRank),args);
+ where+=sqlIn('o.campaign',norm(filters.campaign),args);
+ where+=sqlIn('o.last_status',norm(filters.lastStatus),args);
+ where+=sqlIn('o.source',norm(filters.source),args);
+
+ const roles=norm(filters.role),seniorLeads=norm(filters.seniorLead),teams=norm(filters.team),personUnits=norm(filters.personUnit);
+ if(roles.length||seniorLeads.length||teams.length||personUnits.length){
+  const pArgs:any[]=[];let pSql='SELECT name FROM team_members WHERE 1=1';
+  pSql+=sqlIn('role',roles,pArgs);
+  pSql+=sqlIn('senior_lead',seniorLeads,pArgs);
+  pSql+=sqlIn('team',teams,pArgs);
+  pSql+=sqlIn('business_unit',personUnits,pArgs);
+  where+=` AND o.owner IN (${pSql})`;args.push(...pArgs);
+ }
+
  const reasons=norm(filters.nextCallReason);
  if(reasons.length){
-  const hasBlank=reasons.includes('بدون تسک'),normal=reasons.filter((x:any)=>x!=='بدون تسک'),parts:string[]=[];
-  if(normal.length){const qs=normal.map((v:any)=>{args.push(v);return '?'}).join(',');parts.push(`o.next_call_reason IN (${qs})`)}
+  const hasBlank=reasons.includes('بدون تسک');
+  const normal=reasons.filter((x:any)=>x!=='بدون تسک');
+  const parts:string[]=[];
+  if(normal.length){
+   const qs=normal.map((v:any)=>{args.push(v);return '?'}).join(',');
+   parts.push(`o.next_call_reason IN (${qs})`);
+  }
   if(hasBlank)parts.push("TRIM(COALESCE(o.next_call_reason,''))=''");
   if(parts.length)where+=' AND ('+parts.join(' OR ')+')';
  }
+
  const age=String(filters.age||'');
  if(age==='0-3')where+=' AND o.age_days BETWEEN 0 AND 3';
  if(age==='4-7')where+=' AND o.age_days BETWEEN 4 AND 7';
  if(age==='8-14')where+=' AND o.age_days BETWEEN 8 AND 14';
  if(age==='15-30')where+=' AND o.age_days BETWEEN 15 AND 30';
  if(age==='31+')where+=' AND o.age_days >= 31';
- where+=sqlIn('o.customer_rank',norm(filters.customerRank),args);
- where+=sqlIn('o.campaign',norm(filters.campaign),args);
- where+=sqlIn('o.last_status',norm(filters.lastStatus),args);
- where+=sqlIn('o.source',norm(filters.source),args);
- const roles=norm(filters.role),seniorLeads=norm(filters.seniorLead),teams=norm(filters.team),personUnits=norm(filters.personUnit);
- if(roles.length||seniorLeads.length||teams.length||personUnits.length){
-  const pArgs:any[]=[];let pSql='SELECT name FROM team_members WHERE 1=1';
-  pSql+=sqlIn('role',roles,pArgs);pSql+=sqlIn('senior_lead',seniorLeads,pArgs);pSql+=sqlIn('team',teams,pArgs);pSql+=sqlIn('business_unit',personUnits,pArgs);
-  where+=` AND o.owner IN (${pSql})`;args.push(...pArgs);
- }
- const reasons=norm(filters.nextCallReason);
- if(reasons.length){
-  const hasBlank=reasons.includes('بدون تسک'),normal=reasons.filter((x:any)=>x!=='بدون تسک'),parts:string[]=[];
-  if(normal.length){const qs=normal.map((v:any)=>{args.push(v);return '?'}).join(',');parts.push(`o.next_call_reason IN (${qs})`)}
-  if(hasBlank)parts.push("TRIM(COALESCE(o.next_call_reason,''))=''");
-  if(parts.length)where+=' AND ('+parts.join(' OR ')+')';
- }
- const age=filters.age||'';if(age==='0-3')where+=' AND o.age_days BETWEEN 0 AND 3';if(age==='4-7')where+=' AND o.age_days BETWEEN 4 AND 7';if(age==='8-14')where+=' AND o.age_days BETWEEN 8 AND 14';if(age==='15-30')where+=' AND o.age_days BETWEEN 15 AND 30';if(age==='31+')where+=' AND o.age_days >= 31';
+
  return tursoSelect((`SELECT
   o.lead_number AS "شماره سرنخ",o.created_date AS "تاریخ ثبت",o.last_modified_date AS "آخرین تغییر",
   o.customer_name AS "نام مشتری",o.owner AS "مالک",COALESCE(t.role,'') AS "رده",COALESCE(t.team_lead,'') AS "تیم لید",
@@ -156,12 +160,65 @@ export async function getOpenNearDeadlineDetails(leadType:string,owner:string,fi
  let where=" WHERE TRIM(COALESCE(o.lead_type,''))=? AND o.age_days BETWEEN ? AND ?";
  if(owner){where+=' AND o.owner=?';args.push(owner)}
  where+=sqlIn('o.owner',norm(filters.advisor),args);
+
  const seniorLeads=norm(filters.seniorLead),roles=norm(filters.role),teams=norm(filters.team),personUnits=norm(filters.personUnit);
  if(seniorLeads.length||roles.length||teams.length||personUnits.length){
   const pArgs:any[]=[];let pSql='SELECT name FROM team_members WHERE 1=1';
-  pSql+=sqlIn('senior_lead',seniorLeads,pArgs);pSql+=sqlIn('role',roles,pArgs);pSql+=sqlIn('team',teams,pArgs);pSql+=sqlIn('business_unit',personUnits,pArgs);
+  pSql+=sqlIn('senior_lead',seniorLeads,pArgs);
+  pSql+=sqlIn('role',roles,pArgs);
+  pSql+=sqlIn('team',teams,pArgs);
+  pSql+=sqlIn('business_unit',personUnits,pArgs);
   where+=` AND o.owner IN (${pSql})`;args.push(...pArgs);
  }
- where+=sqlIn('o.lead_type',norm(filters.leadType),args);where+=sqlIn('o.customer_rank',norm(filters.customerRank),args);where+=sqlIn('o.campaign',norm(filters.campaign),args);where+=sqlIn('o.last_status',norm(filters.lastStatus),args);where+=sqlIn('o.source',norm(filters.source),args);
- return tursoSelect((`SELECT o.lead_number AS "leadNumber",o.created_date AS "createdDate",o.age_days AS "ageDays",CASE WHEN TRIM(COALESCE(o.lead_type,''))='حقیقی' THEN 18-o.age_days WHEN TRIM(COALESCE(o.lead_type,''))='حقوقی' THEN 60-o.age_days END AS "remainingDays",o.customer_rank AS "customerRank",o.last_status AS "lastStatus",o.next_call_reason AS "nextCallReason",o.customer_name AS "customerName",t.name AS owner,o.lead_type AS "leadType",o.source,o.campaign,o.source_software AS "sourceSoftware",o.business_unit AS "businessUnit" FROM open_leads o INNER JOIN team_members t ON t.name=o.owner ${where} ORDER BY "remainingDays" ASC,o.age_days DESC,o.owner LIMIT 4000`).replaceAll('open_leads',openTable),args);
+
+ where+=sqlIn('o.lead_type',norm(filters.leadType),args);
+ where+=sqlIn('o.customer_rank',norm(filters.customerRank),args);
+ where+=sqlIn('o.campaign',norm(filters.campaign),args);
+ where+=sqlIn('o.last_status',norm(filters.lastStatus),args);
+ where+=sqlIn('o.source',norm(filters.source),args);
+
+ const reasons=norm(filters.nextCallReason);
+ if(reasons.length){
+  const hasBlank=reasons.includes('بدون تسک');
+  const normal=reasons.filter((x:any)=>x!=='بدون تسک');
+  const parts:string[]=[];
+  if(normal.length){
+   const qs=normal.map((v:any)=>{args.push(v);return '?'}).join(',');
+   parts.push(`o.next_call_reason IN (${qs})`);
+  }
+  if(hasBlank)parts.push("TRIM(COALESCE(o.next_call_reason,''))=''");
+  if(parts.length)where+=' AND ('+parts.join(' OR ')+')';
+ }
+
+ const age=String(filters.age||'');
+ if(age==='0-3')where+=' AND o.age_days BETWEEN 0 AND 3';
+ if(age==='4-7')where+=' AND o.age_days BETWEEN 4 AND 7';
+ if(age==='8-14')where+=' AND o.age_days BETWEEN 8 AND 14';
+ if(age==='15-30')where+=' AND o.age_days BETWEEN 15 AND 30';
+ if(age==='31+')where+=' AND o.age_days >= 31';
+
+ return tursoSelect((`SELECT
+  o.lead_number AS "leadNumber",
+  o.created_date AS "createdDate",
+  o.age_days AS "ageDays",
+  CASE
+   WHEN TRIM(COALESCE(o.lead_type,''))='حقیقی' THEN 18-o.age_days
+   WHEN TRIM(COALESCE(o.lead_type,''))='حقوقی' THEN 60-o.age_days
+  END AS "remainingDays",
+  o.customer_rank AS "customerRank",
+  o.last_status AS "lastStatus",
+  o.next_call_reason AS "nextCallReason",
+  o.customer_name AS "customerName",
+  t.name AS owner,
+  o.lead_type AS "leadType",
+  o.source,
+  o.campaign,
+  o.source_software AS "sourceSoftware",
+  o.business_unit AS "businessUnit"
+  FROM open_leads o
+  INNER JOIN team_members t ON t.name=o.owner
+  ${where}
+  ORDER BY "remainingDays" ASC,o.age_days DESC,o.owner
+  LIMIT 4000`).replaceAll('open_leads',openTable),args);
 }
+
