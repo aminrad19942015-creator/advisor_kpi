@@ -44,7 +44,7 @@ function latestExpectedSync(kind,nowMs=Date.now()){
  const localNow=new Date(nowMs+TEHRAN_OFFSET_MS);
  const todayLocalMidnight=Date.UTC(localNow.getUTCFullYear(),localNow.getUTCMonth(),localNow.getUTCDate());
  const currentMinutes=localNow.getUTCHours()*60+localNow.getUTCMinutes();
- const schedule=kind==='open'?[7*60,9*60,12*60,15*60]:[7*60];
+ const schedule=kind==='open'?[7*60,9*60,12*60,15*60]:[7*60+30];
  const grace=60;
  for(let back=0;back<8;back++){
   const localMidnight=todayLocalMidnight-back*86400000;
