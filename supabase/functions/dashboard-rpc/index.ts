@@ -238,7 +238,7 @@ const handlers:Record<string,Handler>={
   getTeamFilterOptions: async ()=>getTeamFilterOptions(),
   getOpenFilteredSummary: async ([filters])=>getOpenSummary(filters||{}),
   getOpenFilterOptions: async ()=>getOpenFilterOptions(),
-  getOpenLeadDetails: async ([field,value])=>getOpenLeadDetails(field,value),
+  getOpenLeadDetails: async ([field,value,filters])=>getOpenLeadDetails(field,value,filters||{}),
   getOpenNearDeadlineDetails: async ([leadType,owner,filters])=>getOpenNearDeadlineDetails(leadType,owner||'',filters||{}),
   getFilteredPeriodSummary: async ([period,filters])=>getFilteredPeriodSummary(period,filters||{}),
   getPeriodCampaignOptions: async ([period])=>getPeriodCampaignOptions(period),
@@ -335,7 +335,7 @@ Deno.serve(async (req:Request)=>{
       ok:true,
       service:'dashboard-rpc',
       provider:'Supabase',
-      version:13,
+      version:14,
       methods:Object.keys(handlers).length
     },200,requestId);
   }
