@@ -335,7 +335,7 @@ Deno.serve(async (req:Request)=>{
       ok:true,
       service:'dashboard-rpc',
       provider:'Supabase',
-      version:15,
+      version:16,
       methods:Object.keys(handlers).length
     },200,requestId);
   }
