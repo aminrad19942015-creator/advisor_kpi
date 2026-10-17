@@ -265,8 +265,8 @@ function getOpenFilterOptions() {
   return cachedRpc_('getOpenFilterOptions', [], 'dashboard:open-filter-options:v2', 180);
 }
 
-function getOpenLeadDetails(field, value) {
-  return fetchDashboardRpc_('getOpenLeadDetails', [field, value]);
+function getOpenLeadDetails(field, value, filters) {
+  return fetchDashboardRpc_('getOpenLeadDetails', [field, value, filters || {}]);
 }
 
 function getOpenNearDeadlineDetails(leadType, owner, filters) {
