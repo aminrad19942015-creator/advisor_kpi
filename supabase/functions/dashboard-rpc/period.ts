@@ -65,8 +65,6 @@ export async function getPeriodCampaignOptions(period:string){
 export async function getFilteredPeriodSummary(period:string,filters:any={}){
  const L=table(period,'lead'),O=table(period,'opp'),C=table(period,'call'),T=table(period,'ticket');
  const lw=whereFor(filters,'lead',period),ow=whereFor(filters,'opp',period),cw=whereFor(filters,'call',period),tw=whereFor(filters,'ticket',period);
- const attendanceFilters={...(filters||{}),campaign:[]};
- const acw=whereFor(attendanceFilters,'call',period);
  const q:any=await namedBatch([
   {key:'leadKpi',sql:`SELECT
     COUNT(*) handled,
@@ -99,14 +97,42 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
     SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8
     FROM ${C}${cw.where} AND COALESCE("user",'')<>'' GROUP BY "user"`,args:cw.args},
   {key:'ticketByAdvisor',sql:`SELECT owner name,COUNT(*) tickets FROM ${T}${tw.where} AND COALESCE(owner,'')<>'' GROUP BY owner`,args:tw.args},
-  {key:'attendanceByAdvisor',sql:`SELECT name,COUNT(*) AS "attendanceDays" FROM (
-    SELECT "user" name,(start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day"
-    FROM ${C}${acw.where}
-      AND COALESCE("user",'')<>''
-      AND start_date<>''
-    GROUP BY "user",(start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date
-    HAVING COUNT(*)>=5
-  ) GROUP BY name`,args:acw.args},
+  {key:'attendanceByAdvisor',sql:`SELECT name,COUNT(*) AS "attendanceDays"
+   FROM (
+    SELECT name,"day"
+    FROM (
+     SELECT owner AS name,
+            (last_modified_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",
+            SUM(CASE WHEN ${TALKED_CONDITION_SQL} THEN 1 ELSE 0 END) AS activity_count
+     FROM ${L}${lw.where}
+       AND COALESCE(owner,'')<>''
+       AND last_modified_date<>''
+     GROUP BY owner,(last_modified_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date
+
+     UNION ALL
+
+     SELECT "user" AS name,
+            (start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",
+            SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) AS activity_count
+     FROM ${C}${cw.where}
+       AND COALESCE("user",'')<>''
+       AND start_date<>''
+     GROUP BY "user",(start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date
+
+     UNION ALL
+
+     SELECT owner AS name,
+            (closed_at::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",
+            COUNT(*) AS activity_count
+     FROM ${T}${tw.where}
+       AND COALESCE(owner,'')<>''
+       AND closed_at<>''
+     GROUP BY owner,(closed_at::timestamptz AT TIME ZONE 'Asia/Tehran')::date
+    ) activity_parts
+    GROUP BY name,"day"
+    HAVING SUM(activity_count)>=5
+   ) qualifying_days
+   GROUP BY name`,args:[...lw.args,...cw.args,...tw.args]},
   {key:'allTeamMembers',sql:'SELECT name,team_lead AS "teamLead",senior_lead AS "seniorLead",team,role FROM team_members'},
   {key:'leadState',sql:`SELECT COALESCE(NULLIF(last_status,''),'بدون مقدار') label,COUNT(*) count FROM ${L}${lw.where} GROUP BY label ORDER BY count DESC`,args:lw.args},
   {key:'rank',sql:`SELECT COALESCE(NULLIF(customer_rank,''),'بدون مقدار') label,COUNT(*) count FROM ${L}${lw.where} GROUP BY label ORDER BY count DESC`,args:lw.args},
@@ -148,7 +174,7 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
  for(const r of q.callByAdvisor||[]){const x=ensure(r.name);if(x){x.calls=Number(r.calls||0);x.aml=Number(r.aml||0);x.t8=Number(r.t8||0)}}
  for(const r of q.ticketByAdvisor||[]){const x=ensure(r.name);if(x)x.tickets=Number(r.tickets||0)}
  for(const r of q.attendanceByAdvisor||[]){const x=ensure(r.name);if(x)x.attendanceDays=Number(r.attendanceDays||0)}
- const advisors=Object.values(advisorMap).map((r:any)=>{const total=Number(r.talked||0)+Number(r.opps||0)+Number(r.aml||0)+Number(r.t8||0)+Number(r.tickets||0);const attendanceDays=Math.max(1,Number(r.attendanceDays||0));return {...r,attendanceDays,total,callAvg:Number(r.calls||0)/attendanceDays,amlAvg:Number(r.aml||0)/attendanceDays,leadAvg:Number(r.leads||0)/attendanceDays,talkedAvg:Number(r.talked||0)/attendanceDays,oppAvg:Number(r.opps||0)/attendanceDays,t8Avg:Number(r.t8||0)/attendanceDays,ticketAvg:Number(r.tickets||0)/attendanceDays,activityAvg:total/attendanceDays}}).sort((a:any,b:any)=>b.total-a.total);
+ const advisors=Object.values(advisorMap).map((r:any)=>{const total=Number(r.talked||0)+Number(r.opps||0)+Number(r.aml||0)+Number(r.t8||0)+Number(r.tickets||0);const attendanceDays=Number(r.attendanceDays||0);const attendanceDivisor=Math.max(1,attendanceDays);return {...r,attendanceDays,total,callAvg:Number(r.calls||0)/attendanceDivisor,amlAvg:Number(r.aml||0)/attendanceDivisor,leadAvg:Number(r.leads||0)/attendanceDivisor,talkedAvg:Number(r.talked||0)/attendanceDivisor,oppAvg:Number(r.opps||0)/attendanceDivisor,t8Avg:Number(r.t8||0)/attendanceDivisor,ticketAvg:Number(r.tickets||0)/attendanceDivisor,activityAvg:total/attendanceDivisor}}).sort((a:any,b:any)=>b.total-a.total);
  const handled=Number(lk.handled||0),closed=Number(lk.closed||0),talked=Number(lk.talked||0),noStatusCount=Number(lk.noStatusCount||0),noResponseCount=Number(lk.noResponseCount||0),oppLead=Number(ok.oppLead||0),opp=Number(ok.opp||0),calls=Number(ck.calls||0),aml=Number(ck.aml||0),t8=Number(ck.t8||0),tickets=Number(tk.tickets||0),uniqueCalls=Number(ck.uniqueCalls||0),repeatCalls=Number(rk.repeatCalls||0);
  const noStatusRate=handled?noStatusCount/handled*100:0,noResponseRate=handled?noResponseCount/handled*100:0;
  return {period,days,dayCount,unitAdvisorCount:(q.allTeamMembers||[]).length,kpis:{total:talked+opp+aml+t8+tickets,handled,closed,talked,noStatusCount,noStatusRate,noResponseCount,noResponseRate,oppLead,opp,calls,aml,t8,tickets,closeAvg:lk.closeAvg==null?null:Number(lk.closeAvg),uniqueCalls,repeatCalls,memberCount,callAvg:calls/dayCount,amlAvg:aml/dayCount,closedAvg:closed/dayCount,talkedAvg:talked/dayCount,callAvgPerPerson:memberCount?(calls/dayCount)/memberCount:0,amlAvgPerPerson:memberCount?(aml/dayCount)/memberCount:0,closedAvgPerPerson:memberCount?(closed/dayCount)/memberCount:0,talkedAvgPerPerson:memberCount?(talked/dayCount)/memberCount:0},advisors,dimensions:{leadState:pairs(q.leadState),rank:pairs(q.rank),leadSource:pairs(q.leadSource),campaign:pairs(q.campaign),oppKind:pairs(q.oppKind),oppStatus:pairs(q.oppStatus),callSubject:pairs(q.callSubject),leadTicketTopic:pairs(q.leadTicketTopic),ticketState:pairs(q.ticketState),ticketSubject:pairs(q.ticketSubject)}};
