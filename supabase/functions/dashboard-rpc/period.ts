@@ -113,7 +113,8 @@ export async function getFilteredPeriodSummary(period:string,filters:any={}){
 
      SELECT "user" AS name,
             (start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",
-            SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) AS activity_count
+            SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END)
+            + SUM(CASE WHEN ${AML_CONDITION_SQL} THEN 1 ELSE 0 END) AS activity_count
      FROM ${C}${cw.where}
        AND COALESCE("user",'')<>''
        AND start_date<>''
