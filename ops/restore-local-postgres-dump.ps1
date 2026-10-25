@@ -5,10 +5,14 @@ param(
   [int]$Port = 55432,
   [string]$Database = 'finance_local_staging',
   [string]$Username = 'postgres',
-  [string]$DumpFile = (Join-Path $PSScriptRoot '..\runtime\postgres-migration\supabase-public.dump')
+  [string]$DumpFile
 )
 
 $ErrorActionPreference = 'Stop'
+$scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ([string]::IsNullOrWhiteSpace($DumpFile)) {
+  $DumpFile = Join-Path $scriptDirectory '..\runtime\postgres-migration\supabase-public.dump'
+}
 $resolvedHost = $HostName.Trim().ToLowerInvariant()
 $isLoopback = $resolvedHost -eq 'localhost'
 if (-not $isLoopback) {
