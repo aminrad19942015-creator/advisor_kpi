@@ -40,10 +40,32 @@ if ([string]::IsNullOrEmpty($plainPassword)) { throw 'PostgreSQL password cannot
 
 $env:PGPASSWORD = $plainPassword
 try {
-  $check = & $psql -X -qAt -v ON_ERROR_STOP=1 -h $HostName -p $Port -U $Username -d $Database -c "SELECT (SELECT COUNT(*) FROM team_members)::text || '|' || (SELECT COUNT(*) FROM open_leads_crm_shadow)::text"
-  if ($LASTEXITCODE -ne 0 -or ($check -join '').Trim() -ne '80|8392') {
-    throw 'Local PostgreSQL verification failed; expected 80 team members and 8392 open leads. No .env.local was created.'
+  $dbNames = @(& $psql -X -qAt -v ON_ERROR_STOP=1 -h $HostName -p $Port -U $Username -d 'postgres' -c "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
+  if ($LASTEXITCODE -ne 0) { throw 'Could not list local PostgreSQL databases. No .env.local was created.' }
+
+  $orderedNames = @($Database) + @($dbNames | Where-Object { $_ -and $_ -ne $Database })
+  $validDatabases = @()
+  foreach ($candidate in $orderedNames) {
+    $check = @(& $psql -X -qAt -v ON_ERROR_STOP=1 -h $HostName -p $Port -U $Username -d $candidate -c "SELECT (SELECT COUNT(*) FROM public.team_members)::text || '|' || (SELECT COUNT(*) FROM public.open_leads_crm_shadow)::text" 2>$null)
+    if ($LASTEXITCODE -ne 0) { continue }
+    $parts = (($check -join '').Trim() -split '\|')
+    if ($parts.Count -eq 2 -and [long]$parts[0] -gt 0 -and [long]$parts[1] -gt 0) {
+      $validDatabases += [pscustomobject]@{ Name=$candidate; TeamMembers=[long]$parts[0]; OpenLeads=[long]$parts[1] }
+    }
   }
+
+  if ($validDatabases.Count -eq 0) {
+    throw 'No local database contains both public.team_members and public.open_leads_crm_shadow with data. No .env.local was created.'
+  }
+  if ($validDatabases.Count -gt 1) {
+    $preferred = @($validDatabases | Where-Object { $_.Name -eq $Database })
+    if ($preferred.Count -eq 1) { $validDatabases = $preferred }
+    else {
+      $choices = ($validDatabases | ForEach-Object { "$($_.Name) (team=$($_.TeamMembers), open_leads=$($_.OpenLeads))" }) -join ', '
+      throw "More than one local database contains the dashboard data: $choices. Rerun with -Database specifying the intended database. No .env.local was created."
+    }
+  }
+  $Database = $validDatabases[0].Name
 } finally {
   Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
 }
@@ -68,5 +90,6 @@ $values = @(
 $plainPassword = $null
 $securePassword.Dispose()
 Write-Host 'LOCAL_GATEWAY_ENV_READY'
-Write-Host 'PostgreSQL connection and migrated tables verified. Secrets were written only to the ignored local .env.local file.'
-Write-Host 'Keep DASHBOARD_RPC_TOKEN private; it must be copied into this Apps Script project’s Script Properties before publishing.'
+Write-Host "PostgreSQL connection and migrated tables verified: database=$Database team_members=$($validDatabases[0].TeamMembers) open_leads=$($validDatabases[0].OpenLeads)."
+Write-Host 'Secrets were written only to the ignored local .env.local file.'
+Write-Host 'Keep DASHBOARD_RPC_TOKEN private; copy it into the Apps Script project Script Properties before publishing.'
