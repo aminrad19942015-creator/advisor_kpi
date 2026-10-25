@@ -19,8 +19,19 @@ function Resolve-PgTool([string]$Name) {
   throw "PostgreSQL tool '$Name' was not found. Pass -PostgresBin pointing to the PostgreSQL bin folder."
 }
 
-if (-not $SourceUrl) { $SourceUrl = Read-Host 'Read-only Supabase PostgreSQL connection URL' }
-if (-not $TargetUrl) { $TargetUrl = Read-Host 'Local portable PostgreSQL connection URL' }
+function Read-SecureText([string]$Prompt) {
+  $secureValue = Read-Host -Prompt $Prompt -AsSecureString
+  $valuePointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureValue)
+  try {
+    return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($valuePointer)
+  } finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($valuePointer)
+    $secureValue.Dispose()
+  }
+}
+
+if (-not $SourceUrl) { $SourceUrl = Read-SecureText 'Read-only Supabase PostgreSQL connection URL (input hidden)' }
+if (-not $TargetUrl) { $TargetUrl = Read-SecureText 'Local portable PostgreSQL connection URL (input hidden)' }
 if (-not $SourceUrl -or -not $TargetUrl) { throw 'Both source and target connection URLs are required.' }
 
 $pgDump = Resolve-PgTool 'pg_dump'
