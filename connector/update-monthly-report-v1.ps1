@@ -15,6 +15,7 @@ $files = @(
   'activity-sync.js',
   'dashboard-http.js',
   'upload-client.js',
+  'test-upload-client.js',
   'lead-opportunity-sync.js',
   'calls-sync.js',
   'tickets-sync.js'
