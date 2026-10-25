@@ -1,5 +1,7 @@
 const GAS_CONFIG = {
   FUNCTION_URL_PROPERTY: 'SUPABASE_DASHBOARD_RPC_URL',
+  RELAY_URL_PROPERTY: 'GAS_RELAY_URL',
+  RELAY_SECRET_PROPERTY: 'GAS_RELAY_SECRET',
   BRIDGE_TOKEN_PROPERTY: 'DASHBOARD_RPC_TOKEN',
   CACHE_CHUNK_CHARS: 28000,
   CACHE_DEFAULT_TTL_SECONDS: 45,
@@ -26,6 +28,8 @@ function getGasHealth() {
     ok: true,
     runtime: 'Google Apps Script',
     functionUrlConfigured: !!props.getProperty(GAS_CONFIG.FUNCTION_URL_PROPERTY),
+    relayUrlConfigured: !!props.getProperty(GAS_CONFIG.RELAY_URL_PROPERTY),
+    relaySecretConfigured: !!props.getProperty(GAS_CONFIG.RELAY_SECRET_PROPERTY),
     bridgeTokenConfigured: !!props.getProperty(GAS_CONFIG.BRIDGE_TOKEN_PROPERTY),
     now: new Date().toISOString()
   };
@@ -146,6 +150,16 @@ function cacheRemoveJson_(key) {
 }
 
 function fetchDashboardRpc_(method, args) {
+  const props = PropertiesService.getScriptProperties();
+  const relayUrl = props.getProperty(GAS_CONFIG.RELAY_URL_PROPERTY);
+  const relaySecret = props.getProperty(GAS_CONFIG.RELAY_SECRET_PROPERTY);
+  if (relayUrl || relaySecret) {
+    if (!relayUrl || !/^https:\/\//i.test(relayUrl) || !relaySecret || relaySecret.length < 32) {
+      throw new Error('Google relay configuration is incomplete.');
+    }
+    return fetchDashboardRpcViaRelay_(relayUrl, relaySecret, method, args);
+  }
+
   const cfg = rpcConfig_();
   const requestId = Utilities.getUuid();
   const payload = JSON.stringify({
@@ -199,6 +213,60 @@ function fetchDashboardRpc_(method, args) {
   }
 
   throw lastError || new Error('Dashboard RPC failed.');
+}
+
+function relayCall_(url, secret, body) {
+  const raw = JSON.stringify(body);
+  const timestamp = String(Date.now());
+  const nonce = Utilities.getUuid();
+  const canonical = timestamp + '\n' + nonce + '\n' + raw;
+  const signature = Utilities.base64EncodeWebSafe(
+    Utilities.computeHmacSha256Signature(canonical, secret, Utilities.Charset.UTF_8)
+  ).replace(/=+$/g, '');
+  const response = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({timestamp: timestamp, nonce: nonce, signature: signature, body: body}),
+    muteHttpExceptions: true,
+    followRedirects: true
+  });
+  const status = response.getResponseCode();
+  let parsed = null;
+  try { parsed = JSON.parse(response.getContentText('UTF-8')); } catch (err) {}
+  if (status < 200 || status >= 300 || !parsed || parsed.ok !== true) {
+    throw new Error((parsed && parsed.error) || ('Google relay HTTP ' + status));
+  }
+  return parsed.result;
+}
+
+function fetchDashboardRpcViaRelay_(url, secret, method, args) {
+  const allowed = [
+    'getDashboardBootstrap', 'getDashboardInitialPayload', 'getPeriodInitialPayload',
+    'getTeamFilteredSummary', 'getTeamFilterOptions', 'getOpenFilteredSummary',
+    'getOpenFilterOptions', 'getOpenLeadDetails', 'getOpenNearDeadlineDetails',
+    'getFilteredPeriodSummary', 'getPeriodCampaignOptions', 'getActivityDetails',
+    'getPeriodKpiDetails', 'getLeadStatusKpiDetails', 'getDimensionDetails',
+    'getRepeatedCallDetails', 'getAdvisorTrend', 'getDashboardMeta',
+    'getDashboardDiagnostics', 'getExportChunk'
+  ];
+  if (allowed.indexOf(String(method)) < 0) throw new Error('RPC method is not allowed through the Google relay.');
+  return relayRpc_(url, secret, 'dashboard', method, args);
+}
+
+function relayRpc_(url, secret, route, method, args) {
+  const enqueued = relayCall_(url, secret, {action: 'enqueue', route: route, method: String(method), args: Array.isArray(args) ? args : []});
+  const jobId = String(enqueued && enqueued.jobId || '');
+  if (!/^[a-f0-9-]{36}$/i.test(jobId)) throw new Error('Google relay returned an invalid job id.');
+
+  const deadline = Date.now() + 150000;
+  while (Date.now() < deadline) {
+    const result = relayCall_(url, secret, {action: 'wait', jobId: jobId, waitMs: 18000});
+    if (result && result.done === true) {
+      if (result.error) throw new Error(String(result.error));
+      return result.value;
+    }
+  }
+  throw new Error('Local PostgreSQL gateway did not respond before the relay timeout.');
 }
 
 function cachedRpc_(method, args, cacheKey, ttlSeconds) {
@@ -421,6 +489,15 @@ function requireAdmin_(token) {
 
 function adminRpc_(token, method, args) {
   requireAdmin_(token);
+  const props = PropertiesService.getScriptProperties();
+  const relayUrl = props.getProperty(GAS_CONFIG.RELAY_URL_PROPERTY);
+  const relaySecret = props.getProperty(GAS_CONFIG.RELAY_SECRET_PROPERTY);
+  if (relayUrl || relaySecret) {
+    if (!relayUrl || !/^https:\/\//i.test(relayUrl) || !relaySecret || relaySecret.length < 32) {
+      throw new Error('Google relay configuration is incomplete.');
+    }
+    return relayRpc_(relayUrl, relaySecret, 'admin', method, args);
+  }
   const cfg = rpcConfig_();
   const configuredUrl = String(cfg.url).replace(/\/+$/, '');
   const url = /\/dashboard-rpc$/i.test(configuredUrl)

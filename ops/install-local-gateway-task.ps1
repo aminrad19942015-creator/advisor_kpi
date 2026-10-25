@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [string]$TaskName = 'Advisor KPI Local Gateway',
-  [int]$Port = 3000,
+  [int]$Port = 3010,
   [string]$User = "$env:USERDOMAIN\$env:USERNAME"
 )
 
