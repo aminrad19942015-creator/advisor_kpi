@@ -21,7 +21,16 @@ function Resolve-PgTool([string]$Name) {
   throw "PostgreSQL tool '$Name' was not found. Pass -PostgresBin pointing to the PostgreSQL bin folder."
 }
 
-if (-not $Password) { $Password = Read-Host 'Portable PostgreSQL password' }
+if (-not $Password) {
+  $securePassword = Read-Host 'Portable PostgreSQL password' -AsSecureString
+  $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
+  try {
+    $Password = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPointer)
+  } finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer)
+    $securePassword.Dispose()
+  }
+}
 $psql = Resolve-PgTool 'psql'
 $env:PGPASSWORD = $Password
 
