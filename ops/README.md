@@ -8,13 +8,12 @@ The PostgreSQL port is never exposed to the internet. The gateway accepts the da
 
 ## One-time preparation
 
-1. Make sure portable PostgreSQL is running and that `psql`, `pg_dump`, and `pg_restore` are available, or pass `-PostgresBin` to the scripts.
+1. Run `initialize-portable-postgres.ps1` once to create/start the portable Cluster and `advisor_kpi` database. It defaults to the PostgreSQL installation found on the company PC and asks for the local password.
 2. Copy the repository `.env.example` to `.env.local` and set `DATABASE_URL`, `ADMIN_PASSWORD`, `CRM_CONNECTOR_TOKEN`, and `DASHBOARD_RPC_TOKEN`.
-3. Run `bootstrap-local-postgres.ps1` if the local database does not exist.
-4. Run `migrate-supabase-to-local-postgres.ps1` with the read-only Supabase connection URL and local connection URL. It creates a dump and a rollback backup before restoring.
-5. Build/start the gateway with `start-local-gateway.ps1`. A named Cloudflare Tunnel token is required for a stable HTTPS address that GAS can call.
-6. If the gateway should start automatically at Windows logon, run `install-local-gateway-task.ps1` once. Keep the named HTTPS tunnel as a separate Cloudflare service/task so its credentials are not placed in the application command line.
-7. Point the GAS Script Property `SUPABASE_DASHBOARD_RPC_URL` at `<gateway-url>/api/rpc` and keep the same `DASHBOARD_RPC_TOKEN` value.
-8. After the dashboard preflight succeeds, run `configure-connector-local-gateway.ps1 -GatewayUrl <gateway-url>`. Connector Scheduled Tasks are intentionally still disabled until the cutover is accepted.
+3. Run `migrate-supabase-to-local-postgres.ps1` with the read-only Supabase connection URL and local connection URL. It creates a dump and a rollback backup before restoring.
+4. Build/start the gateway with `start-local-gateway.ps1`. A named Cloudflare Tunnel token is required for a stable HTTPS address that GAS can call.
+5. If the gateway should start automatically at Windows logon, run `install-local-gateway-task.ps1` once. Keep the named HTTPS tunnel as a separate Cloudflare service/task so its credentials are not placed in the application command line.
+6. Point the GAS Script Property `SUPABASE_DASHBOARD_RPC_URL` at `<gateway-url>/api/rpc` and keep the same `DASHBOARD_RPC_TOKEN` value.
+7. After the dashboard preflight succeeds, run `configure-connector-local-gateway.ps1 -GatewayUrl <gateway-url>`. Connector Scheduled Tasks are intentionally still disabled until the cutover is accepted.
 
 The migration script is source-preserving: it reads Supabase, backs up the current local database, restores only the public schema, and verifies essential tables and sync metadata.
