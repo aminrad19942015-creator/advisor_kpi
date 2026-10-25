@@ -3,10 +3,11 @@ param(
   [string]$SourceUrl = $env:ADVISOR_SOURCE_DATABASE_URL,
   [string]$TargetUrl = $env:ADVISOR_TARGET_DATABASE_URL,
   [string]$PostgresBin,
-  [string]$DumpFile = (Join-Path $PSScriptRoot '..\runtime\postgres-migration\supabase-public.dump')
+  [string]$DumpFile
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $DumpFile) { $DumpFile = Join-Path $PSScriptRoot '..\runtime\postgres-migration\supabase-public.dump' }
 
 function Resolve-PgTool([string]$Name) {
   if ($PostgresBin) {
