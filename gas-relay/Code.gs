@@ -45,6 +45,47 @@ function doPost(e) {
   }
 }
 
+/** Same-owner Apps Script library entrypoint. Only repeatable dashboard reads.
+ * This path uses no Drive API/scopes in the including dashboard project.
+ */
+function signedReadCall(envelope) {
+  verifyEnvelope_(envelope);
+  const body = envelope.body || {};
+  if (body.route && body.route !== 'dashboard') throw new Error('Native queue accepts dashboard reads only.');
+  let jobId = String(body.jobId || '');
+  if (body.action === 'request') {
+    const method = String(body.method || '');
+    if (RELAY.METHODS.indexOf(method) < 0) throw new Error('RPC method is not allowed.');
+    jobId = Utilities.getUuid();
+    const job = {id:jobId,state:'queued',route:'dashboard',method:method,
+      args:Array.isArray(body.args)?body.args:[],createdAt:Date.now(),cacheOnly:true};
+    if (!cacheReadJob_(job)) return {useHttp:true};
+    const lock = LockService.getScriptLock();lock.waitLock(5000);
+    try {
+      const pending = pendingReadJobs_();pending.push(jobId);
+      if (!cachePut_('relay-pending-reads',JSON.stringify(pending.slice(-100)),600)) return {useHttp:true};
+      cachePut_('relay-wake',Utilities.getUuid(),600);
+    } finally { lock.releaseLock(); }
+  } else if (body.action !== 'wait') throw new Error('Native queue action is not allowed.');
+  if (!/^[a-f0-9-]{36}$/i.test(jobId)) throw new Error('Invalid relay job id.');
+  const deadline=Date.now()+Math.max(0,Math.min(RELAY.MAX_WAIT_MS,Number(body.waitMs||0)));
+  while (true) {
+    if (cacheGet_('relay-consumed:'+jobId)) return {done:true,error:'Relay job was already consumed.'};
+    const result=cacheGetJson_('relay-result:'+jobId);
+    if (result) {
+      if (!cachePut_('relay-consumed:'+jobId,'1',600)) return {useHttp:true};
+      cacheRemoveJson_('relay-result:'+jobId);
+      cacheRemove_('relay-read-job:'+jobId);
+      return {done:true,value:result.value,error:result.error||null};
+    }
+    // Missing/oversized cache data falls back to a fresh, durable HTTP read.
+    // Repeating reads is safe; admin mutations never enter this path.
+    if (!cachedReadJob_(jobId)) return {useHttp:true};
+    if (Date.now()>=deadline) return {done:false,jobId:jobId};
+    Utilities.sleep(Math.min(250,Math.max(1,deadline-Date.now())));
+  }
+}
+
 function json_(value) {
   return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON);
 }
@@ -161,19 +202,26 @@ function claimNext_() {
   lock.waitLock(5000);
   try {
     const pending = pendingReadJobs_();
-    while (pending.length) {
-      const id = pending.shift();
-      cachePut_('relay-pending-reads', JSON.stringify(pending), 600);
+    const retained = [];
+    for (let index = 0; index < pending.length; index++) {
+      const id = pending[index];
       const job = cachedReadJob_(id);
-      if (!job || job.state !== 'queued') continue;
+      if (!job || job.state === 'done') continue;
+      if (job.state === 'claimed' && Date.now()-Number(job.claimedAt||0)<=RELAY.CLAIM_TTL_MS) {retained.push(id);continue;}
+      if (job.cacheOnly) retained.push(id); // Recover an interrupted native read's lease.
       job.state = 'claimed';job.claimedAt = Date.now();
-      if (cacheReadJob_(job)) return claimedJob_(job);
+      if (cacheReadJob_(job)) {
+        cachePut_('relay-pending-reads',JSON.stringify(retained.concat(pending.slice(index+1))),600);
+        return claimedJob_(job);
+      }
     }
+    cachePut_('relay-pending-reads',JSON.stringify(retained),600);
     const files = queueFolder_().getFiles();
     while (files.hasNext()) {
       const file = files.next();
       if (!/^job-[a-f0-9-]+\.json$/i.test(file.getName())) continue;
       const name = file.getName(), id = name.slice(4, -5), cached = cachedReadJob_(id);
+      if (cacheGet_('relay-consumed:'+id)) {file.setTrashed(true);cacheRemove_('relay-file:'+id);continue;}
       if (cached && (cached.state === 'done' || (cached.state === 'claimed' && Date.now() - Number(cached.claimedAt || 0) <= RELAY.CLAIM_TTL_MS))) continue;
       const job = parseFile_(file);
       if (!job || (job.state !== 'queued' && !(job.state === 'claimed' && Date.now() - Number(job.claimedAt || 0) > RELAY.CLAIM_TTL_MS))) continue;
@@ -210,7 +258,14 @@ function cacheReadJob_(job) {
 
 function complete_(body) {
   const jobId = String(body.jobId || '');
-  const file = findJobFile_(jobId);
+  let file = findJobFile_(jobId);
+  if (!file) {
+    const native = cachedReadJob_(jobId);
+    if (native && native.cacheOnly && native.state === 'claimed') {
+      file=queueFolder_().createFile('job-'+jobId+'.json',JSON.stringify(native),MimeType.PLAIN_TEXT);
+      cachePut_('relay-file:'+jobId,file.getId(),600);
+    }
+  }
   if (!file) throw new Error('Relay job not found.');
   const job = parseFile_(file);
   const repeatableRead = job && job.route === 'dashboard' && RELAY.METHODS.indexOf(job.method) >= 0;
@@ -228,7 +283,9 @@ function complete_(body) {
   job.completedAt = Date.now();
   file.setContent(JSON.stringify(job));
   cacheReadJob_({...job, value: undefined});
-  cachePutJson_('relay-result:' + jobId, {value: job.value, error: job.error || null});
+  if (!cachePutJson_('relay-result:' + jobId, {value: job.value, error: job.error || null}) && job.cacheOnly) {
+    cacheRemove_('relay-read-job:'+jobId); // Native caller can use the durable HTTP fallback.
+  }
   return {accepted: true};
 }
 
@@ -315,13 +372,14 @@ function cacheRemove_(key) {
 function cachePutJson_(key, value) {
   const text = JSON.stringify(value), size = RELAY.CACHE_CHUNK_CHARS;
   const count = Math.ceil(text.length / size);
-  if (!count || count > RELAY.MAX_CACHE_CHUNKS) return;
+  if (!count || count > RELAY.MAX_CACHE_CHUNKS) return false;
   try {
     const cache = CacheService.getScriptCache(), chunks = {};
     for (let i = 0; i < count; i++) chunks[key + ':' + i] = text.slice(i * size, (i + 1) * size);
     cache.putAll(chunks, 600);
     cache.put(key + ':count', String(count), 600);
-  } catch (err) {}
+    return true;
+  } catch (err) { return false; }
 }
 function cacheGetJson_(key) {
   const count = Number(cacheGet_(key + ':count') || 0);

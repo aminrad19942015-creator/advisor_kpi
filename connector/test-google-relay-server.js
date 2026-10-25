@@ -48,7 +48,7 @@ function server() {
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../gas-relay/Code.gs'),'utf8'),context);
   const sendEnvelope = env => JSON.parse(context.doPost({postData:{contents:JSON.stringify(env)}}).text);
-  return {files,cache,stats:()=>({scans,reads}),onSleep:fn=>{onSleep=fn;},clearCache:()=>cacheValues.clear(),advance:ms=>{now+=ms;},sendEnvelope,envelope:body=>makeEnvelope(secret,body,now),
+  return {files,cache,stats:()=>({scans,reads}),onSleep:fn=>{onSleep=fn;},clearCache:()=>cacheValues.clear(),advance:ms=>{now+=ms;},sendEnvelope,envelope:body=>makeEnvelope(secret,body,now),native:body=>context.signedReadCall(makeEnvelope(secret,body,now)),
     send:body=>sendEnvelope(makeEnvelope(secret,body,now))};
 }
 
@@ -61,6 +61,25 @@ test('unauthenticated, tampered and replayed requests cannot modify the private 
   assert.equal(s.sendEnvelope(envelope).ok,false);
   assert.equal(s.files.length,0);
   assert.equal(s.send({action:'enqueue',method:'arbitrarySql'}).ok,false);
+});
+
+test('native library reads use the shared queue without Drive in the dashboard; completion is durable',()=>{
+  const s=server();
+  const queued=s.native({action:'request',method:'getDashboardMeta'});
+  assert.equal(queued.done,false);assert.equal(s.files.length,0);assert.deepEqual(s.stats(),{scans:0,reads:0});
+  const job=s.send({action:'claim'}).result.job;assert.equal(job.id,queued.jobId);
+  s.send({action:'complete',jobId:job.id,value:{count:80}});
+  assert.equal(JSON.parse(s.files[0].content).state,'done');
+  const before=s.stats();assert.equal(s.native({action:'wait',jobId:job.id}).value.count,80);assert.deepEqual(s.stats(),before);
+  assert.match(s.native({action:'wait',jobId:job.id}).error,/consumed/);
+  s.send({action:'claim'});assert.equal(s.files[0].trashed,true);
+  assert.throws(()=>s.native({action:'request',route:'admin',method:'saveCrmConfig'}),/reads only/);
+});
+test('native read cache eviction requests a safe HTTP fallback and an interrupted lease is reclaimed',()=>{
+  const s=server();const queued=s.native({action:'request',method:'getDashboardMeta'});
+  assert.equal(s.send({action:'claim'}).result.job.id,queued.jobId);
+  s.advance(46000);assert.equal(s.send({action:'claim'}).result.job.id,queued.jobId);
+  s.clearCache();assert.equal(s.native({action:'wait',jobId:queued.jobId}).useHttp,true);
 });
 
 test('combined request and long-poll claim wake when a new job arrives', () => {

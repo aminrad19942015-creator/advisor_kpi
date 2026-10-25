@@ -1,6 +1,13 @@
 {
   "timeZone": "Asia/Tehran",
-  "dependencies": {},
+  "dependencies": {
+    "libraries": [{
+      "userSymbol": "AdvisorQueue",
+      "libraryId": "14Jr2zKJ5YazrfDTuI6Znt094Hcd_HtJyGZKTHIBkvqeYSXoME7o1HgOb",
+      "version": "4",
+      "developmentMode": false
+    }]
+  },
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8",
   "oauthScopes": [

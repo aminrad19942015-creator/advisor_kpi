@@ -6,6 +6,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const crypto=require('node:crypto');
 const {createJobPool}=require('./google-relay-worker');
+const {verifyRequest}=require('./google-relay-protocol');
 const context=vm.createContext({});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../gas/RpcClient.html'),'utf8').replace(/^<script>\s*|\s*<\/script>\s*$/g,''),context);
 
@@ -71,4 +72,21 @@ test('actual GAS summary cache keeps filter/period keys separate, expires and ho
  assert.equal(gas.cacheGetJson_('large').text,'new');
  for(const key of values.keys())if(key.startsWith('large:')&&key.includes(':chunk:'))values.delete(key);
  assert.equal(gas.cacheGetJson_('large'),null);
+});
+
+test('actual GAS calls the signed native library for reads and safely falls back to HTTP on cache loss',()=>{
+ const secret='native-library-isolated-test-secret-only';let native=0,http=0;
+ const gas=vm.createContext({Utilities:{getUuid:()=>crypto.randomUUID(),Charset:{UTF_8:'UTF-8'},
+  computeHmacSha256Signature:(value,key)=>crypto.createHmac('sha256',key).update(value).digest(),
+  base64EncodeWebSafe:b=>Buffer.from(b).toString('base64url')},
+  AdvisorQueue:{signedReadCall:env=>{native++;assert.equal(verifyRequest(secret,env),true);return {done:true,value:{count:80}};}}});
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../gas/Code.gs'),'utf8'),gas);
+ gas.relayCall_=()=>{http++;return {done:true,value:{count:81}};};
+ assert.equal(gas.relayRpc_('https://script.google.com/test',secret,'dashboard','getDashboardMeta',[]).count,80);
+ assert.equal(http,0);
+ gas.AdvisorQueue.signedReadCall=()=>({useHttp:true});
+ assert.equal(gas.relayRpc_('https://script.google.com/test',secret,'dashboard','getDashboardMeta',[]).count,81);
+ assert.equal(http,1);
+ assert.equal(gas.relayRpc_('https://script.google.com/test',secret,'admin','getOverview',[]).count,81);
+ assert.equal(http,2);assert.equal(native,1);
 });

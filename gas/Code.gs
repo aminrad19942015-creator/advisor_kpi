@@ -208,7 +208,7 @@ function fetchDashboardRpc_(method, args) {
   throw lastError || new Error('Dashboard RPC failed.');
 }
 
-function relayCall_(url, secret, body) {
+function relayEnvelope_(secret, body) {
   const raw = JSON.stringify(body);
   const timestamp = String(Date.now());
   const nonce = Utilities.getUuid();
@@ -216,10 +216,14 @@ function relayCall_(url, secret, body) {
   const signature = Utilities.base64EncodeWebSafe(
     Utilities.computeHmacSha256Signature(canonical, secret, Utilities.Charset.UTF_8)
   ).replace(/=+$/g, '');
+  return {timestamp:timestamp,nonce:nonce,signature:signature,body:body};
+}
+
+function relayCall_(url, secret, body) {
   const response = UrlFetchApp.fetch(url, {
     method: 'post',
     contentType: 'application/json',
-    payload: JSON.stringify({timestamp: timestamp, nonce: nonce, signature: signature, body: body}),
+    payload: JSON.stringify(relayEnvelope_(secret,body)),
     muteHttpExceptions: true,
     followRedirects: true
   });
@@ -246,7 +250,18 @@ function fetchDashboardRpcViaRelay_(url, secret, method, args) {
   return relayRpc_(url, secret, 'dashboard', method, args);
 }
 
-function relayRpc_(url, secret, route, method, args) {
+function relayRpc_(url, secret, route, method, args, skipNative) {
+  if (!skipNative && route === 'dashboard' && typeof AdvisorQueue !== 'undefined') {
+    let result=AdvisorQueue.signedReadCall(relayEnvelope_(secret,{action:'request',route:route,method:String(method),args:Array.isArray(args)?args:[],waitMs:18000}));
+    const deadline=Date.now()+150000;
+    while (!result.done && !result.useHttp && Date.now()<deadline) {
+      result=AdvisorQueue.signedReadCall(relayEnvelope_(secret,{action:'wait',jobId:result.jobId,waitMs:18000}));
+    }
+    if (result.useHttp) return relayRpc_(url,secret,route,method,args,true);
+    if (result.error) throw new Error(String(result.error));
+    if (!result.done) throw new Error('Local PostgreSQL gateway did not respond before the relay timeout.');
+    return result.value;
+  }
   const enqueued = relayCall_(url, secret, {action: 'request', route: route, method: String(method), args: Array.isArray(args) ? args : [], waitMs: 18000});
   if (enqueued && enqueued.done === true) {
     if (enqueued.error) throw new Error(String(enqueued.error));

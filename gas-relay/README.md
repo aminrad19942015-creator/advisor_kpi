@@ -31,3 +31,9 @@ Small dashboard reads also have a cached pending index and lease, so claiming th
 Dashboard summaries use a 15-second GAS read cache and a bounded 20-second page-memory cache (at most 35 seconds combined, without new browser persistence). Detail caches expire after 10 seconds. Filter/period arguments and the admin cache revision isolate server cache keys. In-flight duplicate reads are shared, and late filter responses cannot overwrite newer selections. Database queries and KPI rules are unchanged.
 
 Read-only measurement: run `node ops/benchmark-google-latency.cjs` before upgrading, then `node ops/benchmark-google-latency.cjs --combined` afterward. Ignored `runtime/latency-*.json` files contain only timings and result checksums; the comparison excludes volatile generation/age fields and SQL tie ordering, not KPI values.
+
+### Native Google library path
+
+The dashboard pins this same-owner relay project as the `AdvisorQueue` library. Its HMAC-protected `signedReadCall` entrypoint uses only the library's shared Script Cache/Properties/Lock, removing dashboard-to-relay HTTP hops without adding a Drive scope to the dashboard. The local worker still polls the same authenticated Google endpoint. Native pending reads are short-lived cache jobs; the worker durably writes completed results, and consumed files are trashed on its next scan. Cache loss or an oversized response falls back to a fresh, repeatable HTTP read. Admin mutations retain the durable HTTP queue. No third-party service, inbound port or new user permission is needed.
+
+When changing native queue code, publish the relay first, then pin that saved version in `gas/appsscript.json` before publishing the dashboard. Libraries share their own cache/lock/properties across including scripts, as documented by Google: https://developers.google.com/apps-script/guides/libraries#resource_scoping
