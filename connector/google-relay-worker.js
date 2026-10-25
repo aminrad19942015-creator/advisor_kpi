@@ -20,7 +20,7 @@ const relayUrl = String(process.env.GAS_RELAY_URL || '').trim();
 const relaySecret = String(process.env.GAS_RELAY_SECRET || '');
 const dashboardUrl = String(process.env.LOCAL_DASHBOARD_RPC_URL || 'http://127.0.0.1:3010/api/rpc').trim();
 const dashboardToken = String(process.env.DASHBOARD_RPC_TOKEN || '');
-const pollMs = Math.max(5000, Math.min(60000, Number(process.env.GAS_RELAY_POLL_MS || 20000)));
+const pollMs = Math.max(5000, Math.min(60000, Number(process.env.GAS_RELAY_POLL_MS || 5000)));
 let stopping = false;
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }

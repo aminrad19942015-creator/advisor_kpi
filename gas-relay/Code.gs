@@ -71,8 +71,12 @@ function verifyEnvelope_(env) {
 
   const cache = CacheService.getScriptCache();
   const nonceKey = 'relay-nonce:' + nonce;
-  if (cache.get(nonceKey)) throw new Error('Duplicate relay request.');
-  cache.put(nonceKey, '1', 300);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    if (cache.get(nonceKey)) throw new Error('Duplicate relay request.');
+    cache.put(nonceKey, '1', 300);
+  } finally { lock.releaseLock(); }
 }
 
 function constantTimeEqual_(a, b) {
@@ -85,6 +89,10 @@ function constantTimeEqual_(a, b) {
 function dispatch_(body) {
   cleanupExpired_();
   switch (String(body.action || '')) {
+    case 'health': {
+      const folder = queueFolder_();
+      return {ready: true, privateQueue: folder.getSharingAccess() === DriveApp.Access.PRIVATE && folder.getEditors().length === 0 && folder.getViewers().length === 0};
+    }
     case 'enqueue': return enqueue_(body);
     case 'claim': return claim_();
     case 'complete': return complete_(body);

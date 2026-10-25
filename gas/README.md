@@ -2,19 +2,31 @@
 
 This folder contains the new Google Apps Script runtime for the Advisor KPI dashboard.
 
+## Current local PostgreSQL publication
+
+The existing coworkers' dashboard deployment now uses the separate Google Apps Script queue and an outbound worker on the office PC. PostgreSQL and the Next.js API listen only on loopback. No Cloudflare, public PostgreSQL port, Google Sheets, or additional hosting provider is used by this path. The queue uses owner-private temporary Drive JSON files and HMAC-signed requests.
+
+Current project/deployment IDs and the dashboard's pre-existing `ANYONE_ANONYMOUS` access setting are recorded in `ops/apps-script-targets.json`. The older domain-only examples below describe a Workspace option, not this personal-account deployment. Production Script Properties select `GAS_RELAY_URL` plus `GAS_RELAY_SECRET`; legacy direct-API properties remain available for rollback and existing admin sessions.
+
+See `ops/README.md` for staging, official-clasp publication, current-user startup, CRM schedules, and the end-to-end verification command. Bootstrap source containing local credentials is generated only in ignored runtime folders and is removed before versioned publication.
+
 ## Target architecture
 
 ```
 CRM / Windows Connector
         |
         v
-Local HTTPS Gateway: /api/crm-shadow + /api/crm-activity
+Loopback Gateway: /api/crm-shadow + /api/crm-activity
         |
         v
 Portable PostgreSQL on the office PC  <-- authoritative operational snapshots
         |
         v
-Local HTTPS Gateway: /api/rpc + /api/admin-rpc
+Loopback Gateway: /api/rpc + /api/admin-rpc
+        ^
+        | outbound polling by local worker
+        v
+Private Google Apps Script queue
         |
         v
 Google Apps Script Web App
@@ -23,7 +35,7 @@ Google Apps Script Web App
 Browser
 ```
 
-The company workstation is required for both the database and CRM refreshes. The gateway must be running for the dashboard to load; PostgreSQL itself is never exposed publicly.
+The company workstation is required for the database, local worker, and CRM refreshes. It must remain powered on with the user logged in. PostgreSQL itself is never exposed publicly.
 
 ## Non-negotiable runtime rules
 

@@ -7,3 +7,7 @@ connector/.env
 connector/.env.local
 connector/runtime/
 connector/browser-profile/
+connector/data-backup/
+/runtime/
+**/.clasprc.json
+**/.clasp.json

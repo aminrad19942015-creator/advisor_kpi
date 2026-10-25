@@ -38,6 +38,18 @@ jobs:
         run: |
           cp gas/Code.gs /tmp/advisor-gas-code.js
           node --check /tmp/advisor-gas-code.js
+          cp gas-relay/Code.gs /tmp/advisor-gas-relay.js
+          node --check /tmp/advisor-gas-relay.js
+
+      - name: Verify Google transport authentication and queue lifecycle
+        run: node --test connector/test-google-relay-protocol.js connector/test-google-relay-server.js
+
+      - name: Parse local runtime and publishing tools
+        run: |
+          node --check ops/local-runtime.cjs
+          node --check ops/stage-google-project.cjs
+          node --check ops/configure-google-runtime.cjs
+          node --check ops/verify-google-postgres.cjs
 
       - name: Parse GAS browser JavaScript
         run: |

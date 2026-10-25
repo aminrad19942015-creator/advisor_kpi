@@ -1,14 +1,18 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory=$true)][string]$GatewayUrl,
-  [string]$ConnectorDir = (Join-Path $PSScriptRoot '..\connector')
+  [string]$ConnectorDir = ''
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $ConnectorDir) { $ConnectorDir = Join-Path $PSScriptRoot '..\connector' }
 $envPath = Join-Path ([IO.Path]::GetFullPath($ConnectorDir)) '.env.local'
 if (-not (Test-Path $envPath)) { throw "Missing connector .env.local: $envPath" }
 $base = $GatewayUrl.TrimEnd('/')
-if (-not $base.StartsWith('https://')) { throw 'GatewayUrl must be an HTTPS URL reachable by Google Apps Script.' }
+$uri = [Uri]$base
+$loopbackHttp = $uri.Scheme -eq 'http' -and $uri.Host -in @('127.0.0.1','localhost','[::1]')
+if ($uri.Scheme -ne 'https' -and -not $loopbackHttp) { throw 'Use HTTPS, or HTTP only for the local loopback gateway.' }
+if ($uri.UserInfo -or $uri.Query -or $uri.Fragment -or $uri.AbsolutePath -ne '/') { throw 'GatewayUrl must be a base URL without credentials, path, query, or fragment.' }
 
 $values = [ordered]@{
   DASHBOARD_API_URL = "$base/api/crm-shadow"
