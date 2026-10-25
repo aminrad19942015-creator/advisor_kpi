@@ -7,7 +7,8 @@
     "https://www.googleapis.com/auth/script.external_request"
   ],
   "urlFetchWhitelist": [
-    "https://tdsqkxyqmebyufcmskkm.supabase.co/"
+    "https://tdsqkxyqmebyufcmskkm.supabase.co/",
+    "https://*.trycloudflare.com/api/"
   ],
   "webapp": {
     "executeAs": "USER_DEPLOYING",

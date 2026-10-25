@@ -87,7 +87,7 @@ The local gateway:
 - connects only to the local `DATABASE_URL`,
 - exposes only the dashboard, admin, and Connector HTTP routes.
 
-The GAS manifest is restricted to the advisor-kpi Supabase hostname and is configured for domain-only Web App access.
+The GAS manifest permits the advisor-kpi Supabase hostname and the `/api/` path on temporary `trycloudflare.com` subdomains for connectivity testing. The latter is intentionally broad because Quick Tunnel hostnames are randomly generated; the gateway must keep token authentication enabled. The Web App remains configured for domain-only access.
 
 ## Production status
 
