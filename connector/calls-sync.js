@@ -3,7 +3,7 @@ const path = require('path');
 const { chromium } = require('playwright');
 const { loadCrmConfig } = require('./config-client');
 const { writeSnapshot } = require('./local-backup');
-const { dashboardRequest } = require('./dashboard-http');
+const { uploadDatasets } = require('./upload-client');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
 let CRM_ORIGIN = 'https://mxrm.emofid.com';
@@ -190,46 +190,15 @@ async function fetchCalls(page,range,label,userDirectory,callConfig){
   });
 }
 
-async function api(body){
-  let lastError;
-  for(let attempt=1;attempt<=4;attempt++){
-    try{
-      const response=await dashboardRequest(API_URL,{
-        method:'POST',
-        headers:{'Content-Type':'application/json','x-crm-connector-token':connectorToken},
-        body:JSON.stringify(body),
-        timeoutMs:60000
-      });
-      const text=response.text;
-      if(!response.ok) throw new Error('Dashboard activity API HTTP '+response.status+': '+text);
-      return JSON.parse(text);
-    }catch(error){
-      lastError=error;
-      console.log('Dashboard API attempt '+attempt+' failed: '+(error?.message||error));
-      if(attempt<4) await new Promise(resolve=>setTimeout(resolve,1500*attempt));
-    }
-  }
-  throw lastError;
-}
-
 async function upload(datasets,range){
-  const start=await api({action:'start'});
-  const batchId=start.batchId;
-  const chunkSize=start.maxChunkRows||300;
-  const expected={};
-
-  for(const [dataset,rows] of Object.entries(datasets)){
-    expected[dataset]=rows.length;
-    let seq=0;
-    for(let i=0;i<rows.length;i+=chunkSize){
-      const chunk=rows.slice(i,i+chunkSize);
-      await api({action:'chunk',batchId,dataset,seq,rows:chunk});
-      console.log('Uploaded '+dataset+' chunk '+(seq+1)+': '+chunk.length);
-      seq++;
-    }
-  }
-
-  return api({action:'finalize',batchId,expected,sourceCheckedAt:new Date().toISOString(),range});
+  const expected=Object.fromEntries(Object.entries(datasets).map(([dataset,rows])=>[dataset,rows.length]));
+  return uploadDatasets({
+    url:API_URL,
+    token:connectorToken,
+    datasets,
+    finalize:{expected,sourceCheckedAt:new Date().toISOString(),range},
+    label:'Dashboard calls API'
+  });
 }
 
 (async()=>{

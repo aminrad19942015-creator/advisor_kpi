@@ -3,7 +3,7 @@ const path=require('path');
 const {chromium}=require('playwright');
 const {loadCrmConfig}=require('./config-client');
 const {writeSnapshot}=require('./local-backup');
-const { dashboardRequest } = require('./dashboard-http');
+const { uploadDatasets } = require('./upload-client');
 require('dotenv').config({path:path.join(__dirname,'.env.local')});
 
 let CRM_ORIGIN='https://mxrm.emofid.com';
@@ -96,15 +96,15 @@ async function fetchOpps(page,range,label,cfg){
  return raw.filter(r=>units.has(normalizeFa(r.createdby?.['_businessunitid_value@OData.Community.Display.V1.FormattedValue']))).map(r=>{const title=r.name??'',upper=String(title).toUpperCase(),leadMatch=String(title).match(/LEAD-\d+/i),registration_type=/(^|-)OPP-/i.test(upper)?'OPP':/(^|-)LEAD-/i.test(upper)?'LEAD':(leadMatch?'LEAD':'');return {opportunity_id:r.ms_opportunitynumber??r.opportunityid??null,title,created_date:r.createdon??null,last_status:formatted(r,'statuscode'),status:formatted(r,'statecode'),potential_customer:formatted(r,'_customerid_value'),source:formatted(r,'ms_opportunitysourcecode'),creator:r.createdby?.fullname??formatted(r,'_createdby_value'),owner:formatted(r,'_ownerid_value'),business_unit:r.createdby?.['_businessunitid_value@OData.Community.Display.V1.FormattedValue']??null,campaign_reference:formatted(r,'_campaignid_value'),ticket_source:formatted(r,'_ms_sourcecaseid_value'),sales_case_type:formatted(r,'ms_documenttypecode'),investment_type:formatted(r,'ms_typeofinvest'),expected_investment:cleanNumber(r.ms_totalestimateinvestment),actual_investment:cleanNumber(r.ms_totalrealinvestment),advisor:formatted(r,'_ms_advisorid_value'),referrer:formatted(r,'_ms_marketeruserid_value'),registration_type,lead_number:leadMatch?leadMatch[0].toUpperCase():null};});
 }
 
-async function api(body){
- let last;
- for(let a=1;a<=4;a++)try{const r=await dashboardRequest(API_URL,{method:'POST',headers:{'Content-Type':'application/json','x-crm-connector-token':connectorToken},body:JSON.stringify(body),timeoutMs:60000});const t=r.text;if(!r.ok)throw new Error('Dashboard activity API HTTP '+r.status+': '+t);return JSON.parse(t);}catch(e){last=e;console.log('Dashboard API attempt '+a+' failed: '+(e?.message||e));if(a<4)await new Promise(res=>setTimeout(res,1500*a));}
- throw last;
-}
 async function upload(datasets,range){
- const s=await api({action:'start'}),expected={},size=s.maxChunkRows||300;
- for(const [dataset,rows] of Object.entries(datasets)){expected[dataset]=rows.length;let seq=0;for(let i=0;i<rows.length;i+=size){const part=rows.slice(i,i+size);await api({action:'chunk',batchId:s.batchId,dataset,seq,rows:part});console.log('Uploaded '+dataset+' chunk '+(seq+1)+': '+part.length);seq++;}}
- return api({action:'finalize',batchId:s.batchId,expected,sourceCheckedAt:new Date().toISOString(),range});
+ const expected=Object.fromEntries(Object.entries(datasets).map(([dataset,rows])=>[dataset,rows.length]));
+ return uploadDatasets({
+  url:API_URL,
+  token:connectorToken,
+  datasets,
+  finalize:{expected,sourceCheckedAt:new Date().toISOString(),range},
+  label:'Dashboard lead/opportunity API'
+ });
 }
 
 (async()=>{

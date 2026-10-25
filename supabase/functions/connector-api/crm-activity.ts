@@ -1,5 +1,6 @@
 import { tursoBatch, tursoSelect, tableColumns, databaseProvider } from './turso.ts';
 const STAGING='crm_daily_activity_chunks';
+const MAX_CHUNK_ROWS=100;
 const TARGETS:Record<string,string>={
   leads:'daily_leads',
   weekly_leads:'weekly_leads',
@@ -61,12 +62,12 @@ export async function startCrmActivityBatch(){
   const batchId=crypto.randomUUID();
   const cutoff=new Date(Date.now()-6*3600_000).toISOString();
   await tursoBatch([{sql:`DELETE FROM ${ident(STAGING)} WHERE created_at<?`,args:[cutoff]}]);
-  return {batchId,maxChunkRows:300};
+  return {batchId,maxChunkRows:MAX_CHUNK_ROWS};
 }
 export async function appendCrmActivityChunk(batchId:string,dataset:string,seq:number,rows:any[]){
   if(!batchId || !TARGETS[dataset]) throw new Error('Invalid CRM activity batch.');
   if(!Number.isInteger(seq)||seq<0) throw new Error('Invalid CRM activity sequence.');
-  if(!Array.isArray(rows)||rows.length<1||rows.length>300) throw new Error('CRM activity chunk must contain 1..300 rows.');
+  if(!Array.isArray(rows)||rows.length<1||rows.length>MAX_CHUNK_ROWS) throw new Error(`CRM activity chunk must contain 1..${MAX_CHUNK_ROWS} rows.`);
   await ensureCrmActivityTables();
   await tursoBatch([{
     sql:`INSERT INTO ${ident(STAGING)}(batch_id,dataset,seq,payload_json,created_at) VALUES(?,?,?,?,?)
