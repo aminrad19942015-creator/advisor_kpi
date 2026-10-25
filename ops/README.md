@@ -8,7 +8,7 @@ The PostgreSQL port is never exposed to the internet. The gateway accepts the da
 
 ## One-time preparation
 
-1. Run `initialize-portable-postgres.ps1` once to create/start the portable Cluster and `advisor_kpi` database. It defaults to the PostgreSQL installation found on the company PC and asks for the local password.
+1. If Portable PostgreSQL is already installed and running on the company PC, do not run `initialize-portable-postgres.ps1` (that creates a separate data cluster). Use `bootstrap-local-postgres.ps1 -PostgresBin 'D:\Users\m.bashirirad\Desktop\pgsql\bin' -Port 55432 -Database advisor_kpi` to verify the existing server and create the target database only if it is absent. It prompts for the password and does not change existing databases. For a genuinely new installation only, use `initialize-portable-postgres.ps1` with an explicitly chosen data directory.
 2. Copy the repository `.env.example` to `.env.local` and set `DATABASE_URL`, `ADMIN_PASSWORD`, `CRM_CONNECTOR_TOKEN`, and `DASHBOARD_RPC_TOKEN`.
 3. Run `migrate-supabase-to-local-postgres.ps1` with the read-only Supabase connection URL and local connection URL. It creates a dump and a rollback backup before restoring.
 4. Build/start the gateway with `start-local-gateway.ps1`. A named Cloudflare Tunnel token is required for a stable HTTPS address that GAS can call.
