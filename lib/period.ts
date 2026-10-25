@@ -11,7 +11,7 @@ const first=(rows:any[])=>rows?.[0]||{};
 const pairs=(rows:any[],k='label',c='count')=>(rows||[]).map(r=>[r[k]||'بدون مقدار',Number(r[c]||0)]);
 function sqlIn(column:string,values:any[],args:any[]){if(!values.length)return '';return ` AND ${column} IN (${values.map(v=>{args.push(v);return '?'}).join(',')})`;}
 function table(period:string,type:'lead'|'opp'|'call'|'ticket'){
- const p=period==='daily'?'daily_':period==='weekly'?'weekly_':period==='monthly'?'monthly_':'';
+ const p=period==='daily'?'daily_':period==='weekly'?'weekly_':period==='monthly'?'monthly_':period==='reportMonth'?'report_month_':'';
  if(!p)throw new Error('بازه نامعتبر: '+period);
  return p+({lead:'leads',opp:'opportunities',call:'calls',ticket:'tickets'} as const)[type];
 }

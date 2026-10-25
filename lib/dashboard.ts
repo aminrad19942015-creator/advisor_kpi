@@ -7,7 +7,7 @@ const norm=(v:any)=>!v?[]:(Array.isArray(v)?v:[v]).filter(Boolean);
 function sqlIn(column:string,values:any[],args:any[]){if(!values.length)return '';const qs=values.map(v=>{args.push(v);return '?'}).join(',');return ` AND ${column} IN (${qs})`;}
 
 export async function getMeta(){
- const rows=await tursoSelect("SELECT key,value FROM dashboard_meta WHERE key IN ('data_version','last_sync_at','crm_shadow_last_sync_at','crm_activity_last_sync_at')").catch(()=>[]);
+ const rows=await tursoSelect("SELECT key,value FROM dashboard_meta WHERE key IN ('data_version','last_sync_at','crm_shadow_last_sync_at','crm_activity_last_sync_at','crm_month_report_last_sync_at','crm_month_report_range_start','crm_month_report_range_end','crm_month_report_period','crm_month_report_label')").catch(()=>[]);
  const meta:any=Object.fromEntries((rows||[]).map((r:any)=>[r.key,r.value]));
  const openSyncAt=meta.crm_shadow_last_sync_at||'';
  const activitySyncAt=meta.crm_activity_last_sync_at||'';
@@ -18,6 +18,10 @@ export async function getMeta(){
   lastSyncAt:timestamps[0]?.raw||'',
   crmShadowLastSyncAt:openSyncAt,
   crmActivityLastSyncAt:activitySyncAt,
+  crmMonthReportLastSyncAt:meta.crm_month_report_last_sync_at||'',
+  crmMonthReportRange:{start:meta.crm_month_report_range_start||'',end:meta.crm_month_report_range_end||''},
+  crmMonthReportPeriod:meta.crm_month_report_period||'',
+  crmMonthReportLabel:meta.crm_month_report_label||'',
   generatedAt:new Date().toISOString()
  };
 }

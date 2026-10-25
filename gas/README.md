@@ -8,13 +8,13 @@ This folder contains the new Google Apps Script runtime for the Advisor KPI dash
 CRM / Windows Connector
         |
         v
-Supabase Edge Function: connector-api
+Local HTTPS Gateway: /api/crm-shadow + /api/crm-activity
         |
         v
-Supabase PostgreSQL  <-- authoritative operational snapshots
+Portable PostgreSQL on the office PC  <-- authoritative operational snapshots
         |
         v
-Supabase Edge Function: dashboard-rpc
+Local HTTPS Gateway: /api/rpc + /api/admin-rpc
         |
         v
 Google Apps Script Web App
@@ -23,7 +23,7 @@ Google Apps Script Web App
 Browser
 ```
 
-The company workstation is required only for CRM refreshes. If it is off, the dashboard continues serving the last successful Supabase snapshot.
+The company workstation is required for both the database and CRM refreshes. The gateway must be running for the dashboard to load; PostgreSQL itself is never exposed publicly.
 
 ## Non-negotiable runtime rules
 
@@ -40,7 +40,7 @@ The company workstation is required only for CRM refreshes. If it is off, the da
 
 ### Data stability
 
-- Supabase remains the source of truth.
+- Local PostgreSQL remains the source of truth after cutover.
 - A failed Connector run must not replace the last good snapshot.
 - Open Leads uses shadow/next staging semantics.
 - Activity batches are prepared in staging and swapped transactionally.
@@ -81,18 +81,17 @@ Required Script Properties:
 
 The browser never receives these values.
 
-The Supabase Edge Function:
-- has platform JWT verification disabled because GAS is not a Supabase user session,
-- requires `DASHBOARD_RPC_TOKEN` on every dashboard POST request,
-- compares only a SHA-256 hash stored in the private schema,
-- connects to Postgres using Supabase's server-side `SUPABASE_DB_URL`,
-- exposes only the dashboard RPC methods.
+The local gateway:
+- requires `DASHBOARD_RPC_TOKEN` on every dashboard and admin RPC POST request,
+- requires `CRM_CONNECTOR_TOKEN` on every Connector request,
+- connects only to the local `DATABASE_URL`,
+- exposes only the dashboard, admin, and Connector HTTP routes.
 
 The GAS manifest is restricted to the advisor-kpi Supabase hostname and is configured for domain-only Web App access.
 
 ## Production status
 
-Production branch: `main`
+Migration branch: `monthly-report-v1`
 
 Migration branch: `gas-dashboard-v1` (completed and ready to merge)
 
@@ -103,8 +102,7 @@ Implemented:
 - one-call initial period bootstrap
 - retry only for transient HTTP errors
 - chunked Script Cache + lock to reduce stampedes
-- Supabase `dashboard-rpc` Edge Function
-- Supabase `connector-api` Edge Function for Open Leads / Activity / Config / Commands
+- Local Next.js dashboard RPC and Connector routes
 - PostgreSQL-backed versioned cache
 - unique data guards + dashboard indexes
 - atomic activity batch replacement code
@@ -126,18 +124,18 @@ Implemented after the initial scaffold:
 - aggregate dashboard diagnostics RPC
 - one-call `runCutoverPreflight()` for GAS + database health
 
-Production runtime is now:
-- Windows Connector for CRM refresh only
-- Supabase PostgreSQL + Edge Functions as the authoritative backend
+Target runtime is:
+- Windows Connector for CRM refresh
+- Portable PostgreSQL + local Next.js gateway as the authoritative backend
 - Google Apps Script Web App as the user/Admin runtime
-- Vercel/Railway are not part of the operational request path
+- Supabase is used only for the one-time verified migration
 
 ## Apps Script configuration
 
 Function URL:
 
 ```
-https://tdsqkxyqmebyufcmskkm.supabase.co/functions/v1/dashboard-rpc
+https://YOUR-STABLE-GATEWAY.example/api/rpc
 ```
 
 Do not commit API keys, database credentials, CRM passwords, Connector tokens, or the dashboard bridge token.
@@ -158,12 +156,12 @@ The result checks both:
 Diagnostics include aggregate row counts, Daily/Weekly/Monthly consistency, Open Leads availability, staging state, cache state, and the three Activity component timestamps. No customer-level rows are returned by the diagnostic endpoint.
 
 
-## Supabase connector cutover
+## Local connector cutover
 
 Prepared endpoint base:
 
 ```
-https://tdsqkxyqmebyufcmskkm.supabase.co/functions/v1/connector-api
+https://YOUR-STABLE-GATEWAY.example/api
 ```
 
 Routes:
@@ -177,15 +175,11 @@ The Edge Function is custom-authenticated with `CRM_CONNECTOR_TOKEN` and is fail
 
 Prepared workstation scripts:
 
-- `connector/cutover-supabase.ps1`
-  - backs up `.env.local`
+- `ops/configure-connector-local-gateway.ps1`
   - rewrites only dashboard endpoint variables
-  - preserves CRM credentials
-  - runs endpoint verification
-- `connector/verify-supabase-endpoints.ps1`
-  - verifies all four Supabase routes using the existing Connector token
+  - preserves CRM credentials and local snapshots
 
-The company workstation is cut over to the Supabase Connector API. Future operational updates are sourced from the `main` branch.
+The company workstation remains stopped until the local PostgreSQL migration and GAS preflight both pass.
 
 ## Morning failure policy
 
@@ -210,7 +204,7 @@ Required GAS Script Properties are only:
 - `SUPABASE_DASHBOARD_RPC_URL`
 - `DASHBOARD_RPC_TOKEN`
 
-The plain bridge token exists only in GAS Script Properties. Supabase stores only its SHA-256 hash in `private.dashboard_rpc_auth`. The browser never receives the token.
+The plain bridge token exists only in GAS Script Properties and the local gateway environment. The browser never receives the token.
 
 
 ## Browser last-good fallback
@@ -243,4 +237,4 @@ Required additional Script Property:
 
 - `ADMIN_PASSWORD`
 
-The browser never receives the dashboard bridge token. Admin writes pass through GAS to the separate Supabase `admin-rpc` Edge Function, and successful Admin writes increment `admin_revision` so dashboard caches are invalidated automatically.
+The browser never receives the dashboard bridge token. Admin writes pass through GAS to the local `/api/admin-rpc` route, and successful Admin writes increment `admin_revision` so dashboard caches are invalidated automatically.

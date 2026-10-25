@@ -1,30 +1,29 @@
 # Advisor KPI Dashboard
 
-Production performance dashboard for the investment-advisor unit, migrated from Google Apps Script / Excel-first operation to Next.js on Vercel with Supabase/PostgreSQL as the operational database.
+Performance dashboard for the investment-advisor unit. The live UI remains Google Apps Script, while the operational database and API gateway are designed to run permanently on the office PC.
 
-## Production architecture
+## Target architecture
 
-- Frontend / API: Next.js 16 on Vercel
-- Operational database: Supabase PostgreSQL
-- CRM ingestion: Windows Connector -> CRM API -> local snapshot backup -> Supabase
+- Frontend: Google Apps Script Web App
+- HTTPS bridge: stable HTTPS tunnel to the office PC
+- API gateway: Next.js 16 running locally
+- Operational database: portable PostgreSQL on the office PC
+- CRM ingestion: Windows Connector -> CRM API -> local gateway -> local PostgreSQL
 - Manual fallback: Admin Excel import
 - Local recovery: rolling compressed snapshots on the Connector workstation
 
-The dashboard no longer depends on Turso.
+Supabase is retained only as the source for the one-time, verified migration. The runtime does not require Supabase after cutover.
 
-## Production URLs
+## Local gateway environment variables
 
-- App: `https://advisor-kpi.vercel.app/`
-- Admin: `https://advisor-kpi.vercel.app/admin`
-- Health: `https://advisor-kpi.vercel.app/api/health`
-
-## Required Vercel environment variables
-
-- `SUPABASE_DATABASE_URL`
+- `DATABASE_URL`
 - `ADMIN_PASSWORD`
 - `CRM_CONNECTOR_TOKEN`
+- `DASHBOARD_RPC_TOKEN`
 
 Secrets must never be committed to the repository.
+
+The complete cutover scripts are in `ops/`. They create a rollback dump before restoring the public Supabase schema, verify essential tables and metadata, and configure the Connector endpoints without changing its credentials or snapshots.
 
 ## Automated refresh policy
 
@@ -56,7 +55,7 @@ Operational CRM datasets:
 - Calls: Daily / Weekly / Monthly
 - Ticket: Daily / Weekly / Monthly
 
-Business rules are stored in Supabase and editable from Admin where appropriate. Technical CRM wiring (origin, API version, entity names, technical date fields and lookup source fields) is read-only from the Admin UI and protected server-side.
+Business rules are stored in PostgreSQL and editable from Admin where appropriate. Technical CRM wiring (origin, API version, entity names, technical date fields and lookup source fields) is read-only from the Admin UI and protected server-side.
 
 ## Admin
 
@@ -96,13 +95,13 @@ Replace is complete replacement, not append. If the source is switched back to C
 
 ## Local backup and recovery
 
-Before CRM data is pushed to Supabase, the Connector saves a compressed local snapshot.
+Before CRM data is pushed to PostgreSQL, the Connector saves a compressed local snapshot.
 
 Default local backup:
 - `connector/data-backup/<dataset>/latest.json.gz`
 - rolling archive retained for 7 days by default
 
-The Admin recovery button queues a restore request. The Connector processes the request on its next run and restores the latest local snapshots into Supabase.
+The Admin recovery button queues a restore request. The Connector processes the request on its next run and restores the latest local snapshots into PostgreSQL.
 
 ## Production QA
 
@@ -120,12 +119,9 @@ Release health requires:
 - Team / Open Leads / Daily / Weekly / Monthly pages load
 - filters and drilldowns return data without RPC errors
 
-## Migration status
+## Current cutover status
 
-The production cutover is complete:
-- Google Apps Script is no longer required by the dashboard runtime.
-- Turso is no longer required by the dashboard runtime.
-- Supabase is the only operational database.
-- CRM ingestion is automated through the Windows Connector.
-- Excel remains available as a manual fallback.
-- local snapshots provide a recovery path.
+- Connector Scheduled Tasks are intentionally disabled.
+- Supabase remains untouched until the local migration is verified.
+- The local gateway routes and PostgreSQL adapter are prepared in this branch.
+- After the dashboard preflight passes through the stable HTTPS gateway, Connector endpoints can be switched and the tasks can be re-enabled deliberately.

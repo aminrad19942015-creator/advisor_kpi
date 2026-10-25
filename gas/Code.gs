@@ -33,7 +33,7 @@ function getGasHealth() {
 
 function setInitialConfig(functionUrl, bridgeToken) {
   if (!functionUrl || !/^https:\/\//i.test(String(functionUrl))) {
-    throw new Error('Supabase Function URL is invalid.');
+    throw new Error('Dashboard API URL is invalid.');
   }
   if (!bridgeToken || String(bridgeToken).length < 32) {
     throw new Error('Dashboard bridge token is invalid.');
@@ -53,7 +53,7 @@ function rpcConfig_() {
   const bridgeToken = props.getProperty(GAS_CONFIG.BRIDGE_TOKEN_PROPERTY);
 
   if (!url || !bridgeToken) {
-    throw new Error('GAS is not configured. Set SUPABASE_DASHBOARD_RPC_URL and DASHBOARD_RPC_TOKEN in Script Properties.');
+    throw new Error('GAS is not configured. Set the dashboard API URL and DASHBOARD_RPC_TOKEN in Script Properties.');
   }
   return {
     url: url,
@@ -422,7 +422,12 @@ function requireAdmin_(token) {
 function adminRpc_(token, method, args) {
   requireAdmin_(token);
   const cfg = rpcConfig_();
-  const url = String(cfg.url).replace(/\/dashboard-rpc\/?$/, '/admin-rpc');
+  const configuredUrl = String(cfg.url).replace(/\/+$/, '');
+  const url = /\/dashboard-rpc$/i.test(configuredUrl)
+    ? configuredUrl.replace(/\/dashboard-rpc$/i, '/admin-rpc')
+    : /\/api\/rpc$/i.test(configuredUrl)
+      ? configuredUrl.replace(/\/api\/rpc$/i, '/api/admin-rpc')
+      : configuredUrl + '/admin-rpc';
   const response = UrlFetchApp.fetch(url, {
     method: 'post',
     contentType: 'application/json',
