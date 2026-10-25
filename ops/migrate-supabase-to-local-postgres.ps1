@@ -45,7 +45,7 @@ if ($LASTEXITCODE -ne 0) { throw "Local restore failed. The pre-restore backup i
 
 $checks = @(
   "SELECT 'team_members' AS table_name,COUNT(*)::bigint AS rows FROM public.team_members",
-  "SELECT 'open_leads' AS table_name,COUNT(*)::bigint AS rows FROM public.open_leads",
+  "SELECT 'open_leads_crm_shadow' AS table_name,COUNT(*)::bigint AS rows FROM public.open_leads_crm_shadow",
   "SELECT 'daily_leads' AS table_name,COUNT(*)::bigint AS rows FROM public.daily_leads",
   "SELECT 'monthly_leads' AS table_name,COUNT(*)::bigint AS rows FROM public.monthly_leads",
   "SELECT 'monthly_calls' AS table_name,COUNT(*)::bigint AS rows FROM public.monthly_calls",
