@@ -81,6 +81,13 @@ test('native read cache eviction requests a safe HTTP fallback and an interrupte
   s.advance(46000);assert.equal(s.send({action:'claim'}).result.job.id,queued.jobId);
   s.clearCache();assert.equal(s.native({action:'wait',jobId:queued.jobId}).useHttp,true);
 });
+test('a partially evicted native result immediately requests fallback rather than waiting for timeout',()=>{
+  const s=server(),queued=s.native({action:'request',method:'getDashboardMeta'});
+  s.send({action:'claim'});s.send({action:'complete',jobId:queued.jobId,value:{count:80}});
+  s.cache.remove('relay-result:'+queued.jobId+':0');
+  assert.equal(s.native({action:'wait',jobId:queued.jobId,waitMs:18000}).useHttp,true);
+  assert.equal(JSON.parse(s.files[0].content).value.count,80);
+});
 
 test('combined request and long-poll claim wake when a new job arrives', () => {
   const s=server();let supplied=false;

@@ -80,7 +80,8 @@ function signedReadCall(envelope) {
     }
     // Missing/oversized cache data falls back to a fresh, durable HTTP read.
     // Repeating reads is safe; admin mutations never enter this path.
-    if (!cachedReadJob_(jobId)) return {useHttp:true};
+    const pending=cachedReadJob_(jobId);
+    if (!pending || pending.state === 'done') return {useHttp:true};
     if (Date.now()>=deadline) return {done:false,jobId:jobId};
     Utilities.sleep(Math.min(250,Math.max(1,deadline-Date.now())));
   }
