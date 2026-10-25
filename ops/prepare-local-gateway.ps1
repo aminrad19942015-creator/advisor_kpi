@@ -46,7 +46,9 @@ try {
   $orderedNames = @($Database) + @($dbNames | Where-Object { $_ -and $_ -ne $Database })
   $validDatabases = @()
   foreach ($candidate in $orderedNames) {
-    $check = @(& $psql -X -qAt -v ON_ERROR_STOP=1 -h $HostName -p $Port -U $Username -d $candidate -c "SELECT (SELECT COUNT(*) FROM public.team_members)::text || '|' || (SELECT COUNT(*) FROM public.open_leads_crm_shadow)::text" 2>$null)
+    $tableCheck = @(& $psql -X -qAt -v ON_ERROR_STOP=1 -h $HostName -p $Port -U $Username -d $candidate -c "SELECT (to_regclass('public.team_members') IS NOT NULL)::text || '|' || (to_regclass('public.open_leads_crm_shadow') IS NOT NULL)::text")
+    if ($LASTEXITCODE -ne 0 -or ($tableCheck -join '').Trim() -ne 'true|true') { continue }
+    $check = @(& $psql -X -qAt -v ON_ERROR_STOP=1 -h $HostName -p $Port -U $Username -d $candidate -c "SELECT (SELECT COUNT(*) FROM public.team_members)::text || '|' || (SELECT COUNT(*) FROM public.open_leads_crm_shadow)::text")
     if ($LASTEXITCODE -ne 0) { continue }
     $parts = (($check -join '').Trim() -split '\|')
     if ($parts.Count -eq 2 -and [long]$parts[0] -gt 0 -and [long]$parts[1] -gt 0) {
