@@ -1,6 +1,10 @@
 <script>
 const $=id=>document.getElementById(id);
 const state={data:null};
+const readRpc=createReadRpcClient((method,args)=>new Promise((resolve,reject)=>{
+ google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[method](...args);
+}));
+const latestRead=createLatestReadRunner(readRpc);
 const fa=v=>Number(v||0).toLocaleString('fa-IR');
 const safe=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;");
 const fmt=v=>{const d=new Date(v);return isNaN(d)?'—':d.toLocaleDateString('fa-IR',{year:'numeric',month:'2-digit',day:'2-digit'})};
@@ -457,7 +461,8 @@ let teamDebounce;
 function debouncedApplyTeam(){clearTimeout(teamDebounce);teamDebounce=setTimeout(applyTeamFilters,350)}
 function applyTeamFilters(){
   setPageLoading('teamPage',true);
-  google.script.run.withSuccessHandler(s=>{state.data.team=s;renderTeam();setPageLoading('teamPage',false)}).getTeamFilteredSummary(filterState.team);
+  latestRead('team','getTeamFilteredSummary',[filterState.team],s=>{state.data.team=s;renderTeam()},
+    e=>toast('خطا در اعمال فیلتر: '+(e?.message||e)),()=>setPageLoading('teamPage',false));
 }
 let openDebounce;
 function debouncedApplyOpen(){clearTimeout(openDebounce);openDebounce=setTimeout(applyOpenFilters,300)}
@@ -482,7 +487,8 @@ function bindOpenFilters(){
 }
 function applyOpenFilters(){
   setPageLoading('openPage',true);
-  google.script.run.withSuccessHandler(s=>{state.data.open=s;renderOpen();setPageLoading('openPage',false)}).getOpenFilteredSummary(filterState.open);
+  latestRead('open','getOpenFilteredSummary',[filterState.open],s=>{state.data.open=s;renderOpen()},
+    e=>toast('خطا در اعمال فیلتر: '+(e?.message||e)),()=>setPageLoading('openPage',false));
 }
 function periodTitle(period){
   return period==='daily'?'فعالیت دیروز':
@@ -506,10 +512,9 @@ function bindPeriodFilters(period){
 function applyPeriodFilters(period){
   const pageId=period+'Page';
   setPageLoading(pageId,true);
-  google.script.run
-    .withFailureHandler(e=>{setPageLoading(pageId,false);toast('خطا در اعمال فیلتر: '+(e?.message||e||'خطای نامشخص'));})
-    .withSuccessHandler(s=>{state.data[period]=s;renderPeriod(period,pageId,periodTitle(period));bindChartHover($(pageId));setPageLoading(pageId,false)})
-    .getFilteredPeriodSummary(period,filterState[period]);
+  latestRead(period,'getFilteredPeriodSummary',[period,filterState[period]],s=>{
+    state.data[period]=s;renderPeriod(period,pageId,periodTitle(period));bindChartHover($(pageId));
+  },e=>toast('خطا در اعمال فیلتر: '+(e?.message||e||'خطای نامشخص')),()=>setPageLoading(pageId,false));
 }
 
 function bindChartHover(root=document){
@@ -899,12 +904,15 @@ function loadAdvisorTrend(period,advisor){
 }
 
 const periodInitialLoaded={daily:false,weekly:false,monthly:false,reportMonth:false};
+const periodInitialPending={};
 function loadInitialPeriod(period){
  const pageId=period+'Page';
- if(periodInitialLoaded[period])return;
+ if(periodInitialLoaded[period]||periodInitialPending[period])return;
+ periodInitialPending[period]=true;
  setPageLoading(pageId,true);
  google.script.run
   .withFailureHandler(e=>{
+    periodInitialPending[period]=false;
     const snap=snapshotRead('period:'+period);
     if(snap&&validPeriodPayload(snap.payload)){
       const payload=snap.payload;
@@ -922,6 +930,7 @@ function loadInitialPeriod(period){
     toast('خطا در دریافت اطلاعات: '+(e?.message||e||'خطای نامشخص'));
   })
   .withSuccessHandler(payload=>{
+    periodInitialPending[period]=false;
     if(!validPeriodPayload(payload)){
       const snap=snapshotRead('period:'+period);
       if(snap&&validPeriodPayload(snap.payload)){
@@ -934,6 +943,7 @@ function loadInitialPeriod(period){
       }
     }else{
       snapshotWrite('period:'+period,payload);
+      readRpc.remember('getFilteredPeriodSummary',[period,filterState[period]],payload.summary);
       updateFreshnessBanner(state.data?.meta||{});
     }
     filterOptions.periodCampaign[period]=payload?.campaignOptions||[];
@@ -986,6 +996,8 @@ google.script.run
  .withSuccessHandler(data=>{
    if(validInitialPayload(data)){
      snapshotWrite('initial',data);
+     readRpc.remember('getTeamFilteredSummary',[filterState.team],data.team);
+     readRpc.remember('getOpenFilteredSummary',[filterState.open],data.open);
      state.data=data;
      renderAll();
      return;

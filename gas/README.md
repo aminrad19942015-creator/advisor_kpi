@@ -227,7 +227,7 @@ The user dashboard stores only aggregate / advisor-summary payloads in browser l
 
 Customer-level drilldown rows are not persisted in browser storage.
 
-If the GAS-to-Supabase call fails temporarily, the dashboard renders the last valid summary and shows a visible fallback warning instead of rendering zeros.
+If the data-service call fails temporarily, the dashboard renders the last valid summary and shows a visible fallback warning instead of rendering zeros.
 
 The UI also compares Open Leads and Activity timestamps with the fixed Tehran schedule and shows a stale-data warning when a scheduled refresh appears to have been missed.
 

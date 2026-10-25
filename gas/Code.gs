@@ -82,36 +82,25 @@ function cacheManifestKey_(key) {
 
 function cacheGetJson_(key) {
   if (!key) return null;
-  const cache = CacheService.getScriptCache();
-  const rawManifest = cache.get(cacheManifestKey_(key));
-  if (!rawManifest) return null;
-
-  let manifest;
   try {
-    manifest = JSON.parse(rawManifest);
-  } catch (err) {
-    return null;
-  }
-
-  const count = Number(manifest && manifest.count || 0);
-  if (!count || count > 40) return null;
-
-  const keys = [];
-  for (let i = 0; i < count; i++) keys.push(key + ':chunk:' + i);
-  const chunks = cache.getAll(keys);
-  let json = '';
-
-  for (let i = 0; i < count; i++) {
-    const part = chunks[key + ':chunk:' + i];
-    if (part == null) return null;
-    json += part;
-  }
-
-  try {
+    const cache = CacheService.getScriptCache();
+    const rawManifest = cache.get(cacheManifestKey_(key));
+    if (!rawManifest) return null;
+    const manifest = JSON.parse(rawManifest);
+    const count = Number(manifest && manifest.count || 0);
+    if (!Number.isInteger(count) || count < 1 || count > 40) return null;
+    const keys = [];
+    const chunkKey = key + (manifest.version ? ':' + manifest.version : '') + ':chunk:';
+    for (let i = 0; i < count; i++) keys.push(chunkKey + i);
+    const chunks = cache.getAll(keys);
+    let json = '';
+    for (let i = 0; i < count; i++) {
+      const part = chunks[chunkKey + i];
+      if (part == null) return null;
+      json += part;
+    }
     return JSON.parse(json);
-  } catch (err) {
-    return null;
-  }
+  } catch (err) { return null; }
 }
 
 function cachePutJson_(key, value, ttlSeconds) {
@@ -122,15 +111,18 @@ function cachePutJson_(key, value, ttlSeconds) {
   if (count < 1 || count > 40) return;
 
   const ttl = Math.max(1, Math.min(Number(ttlSeconds || GAS_CONFIG.CACHE_DEFAULT_TTL_SECONDS), 21600));
-  const cache = CacheService.getScriptCache();
   const chunks = {};
+  const version = Utilities.getUuid();
 
   for (let i = 0; i < count; i++) {
-    chunks[key + ':chunk:' + i] = json.slice(i * size, (i + 1) * size);
+    chunks[key + ':' + version + ':chunk:' + i] = json.slice(i * size, (i + 1) * size);
   }
 
-  cache.putAll(chunks, ttl);
-  cache.put(cacheManifestKey_(key), JSON.stringify({ count: count }), ttl);
+  try {
+    const cache = CacheService.getScriptCache();
+    cache.putAll(chunks, ttl);
+    cache.put(cacheManifestKey_(key), JSON.stringify({ count: count, version: version }), ttl);
+  } catch (err) {} // A cache outage must not turn a successful database read into an error.
 }
 
 function cacheRemoveJson_(key) {
@@ -141,8 +133,9 @@ function cacheRemoveJson_(key) {
 
   if (rawManifest) {
     try {
-      const count = Number(JSON.parse(rawManifest).count || 0);
-      for (let i = 0; i < Math.min(count, 40); i++) keys.push(key + ':chunk:' + i);
+      const manifest = JSON.parse(rawManifest), count = Number(manifest.count || 0);
+      const prefix = key + (manifest.version ? ':' + manifest.version : '') + ':chunk:';
+      for (let i = 0; i < Math.min(count, 40); i++) keys.push(prefix + i);
     } catch (err) {}
   }
 
@@ -254,7 +247,11 @@ function fetchDashboardRpcViaRelay_(url, secret, method, args) {
 }
 
 function relayRpc_(url, secret, route, method, args) {
-  const enqueued = relayCall_(url, secret, {action: 'enqueue', route: route, method: String(method), args: Array.isArray(args) ? args : []});
+  const enqueued = relayCall_(url, secret, {action: 'request', route: route, method: String(method), args: Array.isArray(args) ? args : [], waitMs: 18000});
+  if (enqueued && enqueued.done === true) {
+    if (enqueued.error) throw new Error(String(enqueued.error));
+    return enqueued.value;
+  }
   const jobId = String(enqueued && enqueued.jobId || '');
   if (!/^[a-f0-9-]{36}$/i.test(jobId)) throw new Error('Google relay returned an invalid job id.');
 
@@ -274,23 +271,17 @@ function cachedRpc_(method, args, cacheKey, ttlSeconds) {
   const hit = cacheGetJson_(resolvedKey);
   if (hit != null) return hit;
 
-  const lock = LockService.getScriptLock();
-  let locked = false;
+  // Independent filters must not wait on a global lock held across network I/O.
+  const result = fetchDashboardRpc_(method, args);
+  if (resolvedKey) cachePutJson_(resolvedKey, result, ttlSeconds);
+  return result;
+}
 
-  try {
-    locked = lock.tryLock(1200);
-    if (locked) {
-      const secondHit = cacheGetJson_(resolvedKey);
-      if (secondHit != null) return secondHit;
-    }
-
-    const result = fetchDashboardRpc_(method, args);
-
-    if (resolvedKey) cachePutJson_(resolvedKey, result, ttlSeconds);
-    return result;
-  } finally {
-    if (locked) lock.releaseLock();
-  }
+function cachedReadRpc_(method, args, ttlSeconds) {
+  const hash = Utilities.base64EncodeWebSafe(Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256, JSON.stringify(args), Utilities.Charset.UTF_8
+  )).slice(0, 32);
+  return cachedRpc_(method, args, 'dashboard:read:v1:' + method + ':' + hash, ttlSeconds || 15);
 }
 
 function getDashboardInitialPayload(openFilters) {
@@ -310,7 +301,7 @@ function getDashboardInitialPayload(openFilters) {
 
 function getPeriodInitialPayload(period, filters) {
   const p = String(period || '');
-  return fetchDashboardRpc_('getPeriodInitialPayload', [p, filters || {}]);
+  return cachedReadRpc_('getPeriodInitialPayload', [p, filters || {}]);
 }
 
 function getDashboardBootstrap() {
@@ -318,7 +309,7 @@ function getDashboardBootstrap() {
 }
 
 function getTeamFilteredSummary(filters) {
-  return fetchDashboardRpc_('getTeamFilteredSummary', [filters || {}]);
+  return cachedReadRpc_('getTeamFilteredSummary', [filters || {}]);
 }
 
 function getTeamFilterOptions() {
@@ -326,7 +317,7 @@ function getTeamFilterOptions() {
 }
 
 function getOpenFilteredSummary(filters) {
-  return fetchDashboardRpc_('getOpenFilteredSummary', [filters || {}]);
+  return cachedReadRpc_('getOpenFilteredSummary', [filters || {}]);
 }
 
 function getOpenFilterOptions() {
@@ -334,15 +325,15 @@ function getOpenFilterOptions() {
 }
 
 function getOpenLeadDetails(field, value, filters) {
-  return fetchDashboardRpc_('getOpenLeadDetails', [field, value, filters || {}]);
+  return cachedReadRpc_('getOpenLeadDetails', [field, value, filters || {}], 10);
 }
 
 function getOpenNearDeadlineDetails(leadType, owner, filters) {
-  return fetchDashboardRpc_('getOpenNearDeadlineDetails', [leadType, owner || '', filters || {}]);
+  return cachedReadRpc_('getOpenNearDeadlineDetails', [leadType, owner || '', filters || {}], 10);
 }
 
 function getFilteredPeriodSummary(period, filters) {
-  return fetchDashboardRpc_('getFilteredPeriodSummary', [period, filters || {}]);
+  return cachedReadRpc_('getFilteredPeriodSummary', [period, filters || {}]);
 }
 
 function getPeriodCampaignOptions(period) {
@@ -355,27 +346,27 @@ function getPeriodCampaignOptions(period) {
 }
 
 function getActivityDetails(period, type, user, filters) {
-  return fetchDashboardRpc_('getActivityDetails', [period, type, user, filters || {}]);
+  return cachedReadRpc_('getActivityDetails', [period, type, user, filters || {}], 10);
 }
 
 function getPeriodKpiDetails(period, type, filters) {
-  return fetchDashboardRpc_('getPeriodKpiDetails', [period, type, filters || {}]);
+  return cachedReadRpc_('getPeriodKpiDetails', [period, type, filters || {}], 10);
 }
 
 function getLeadStatusKpiDetails(period, type, filters) {
-  return fetchDashboardRpc_('getLeadStatusKpiDetails', [period, type, filters || {}]);
+  return cachedReadRpc_('getLeadStatusKpiDetails', [period, type, filters || {}], 10);
 }
 
 function getDimensionDetails(period, source, field, value, filters) {
-  return fetchDashboardRpc_('getDimensionDetails', [period, source, field, value, filters || {}]);
+  return cachedReadRpc_('getDimensionDetails', [period, source, field, value, filters || {}], 10);
 }
 
 function getRepeatedCallDetails(period, filters) {
-  return fetchDashboardRpc_('getRepeatedCallDetails', [period, filters || {}]);
+  return cachedReadRpc_('getRepeatedCallDetails', [period, filters || {}], 10);
 }
 
 function getAdvisorTrend(period, advisor) {
-  return fetchDashboardRpc_('getAdvisorTrend', [period, advisor]);
+  return cachedReadRpc_('getAdvisorTrend', [period, advisor], 10);
 }
 
 function getDashboardMeta() {

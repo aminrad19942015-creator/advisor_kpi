@@ -42,7 +42,7 @@ jobs:
           node --check /tmp/advisor-gas-relay.js
 
       - name: Verify Google transport authentication and queue lifecycle
-        run: node --test connector/test-google-relay-protocol.js connector/test-google-relay-server.js
+        run: node --test connector/test-google-relay-protocol.js connector/test-google-relay-server.js connector/test-dashboard-read-cache.js
 
       - name: Parse local runtime and publishing tools
         run: |
@@ -55,6 +55,8 @@ jobs:
         run: |
           sed '1d;$d' gas/Scripts.html > /tmp/advisor-gas-scripts.js
           node --check /tmp/advisor-gas-scripts.js
+          sed '1d;$d' gas/RpcClient.html > /tmp/advisor-gas-rpc-client.js
+          node --check /tmp/advisor-gas-rpc-client.js
 
       - name: Parse GAS admin browser JavaScript
         run: |

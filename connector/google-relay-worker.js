@@ -62,32 +62,60 @@ async function execute(job) {
   return response.result;
 }
 
+function createJobPool(executeJob, completeJob, reportError = console.error, limit = 2) {
+  const active = new Set();
+  let adminTail = Promise.resolve();
+  return {
+    async waitForSlot() { if (active.size >= limit) await Promise.race(active); },
+    start(job) {
+      const work = async () => {
+        let value, error;
+        const started = Date.now();
+        try { value = await executeJob(job); }
+        catch (err) { error = String(err && err.message || err).slice(0, 400); }
+        await completeJob(job, value, error);
+        if (error) reportError(`Relay job failed (${job.method}): ${error}`);
+        else console.log(JSON.stringify({event:'relay-job-completed',method:job.method,elapsedMs:Date.now()-started}));
+      };
+      // Dashboard reads may overlap; admin operations retain their original order.
+      const pending = job.route === 'admin' ? adminTail.then(work) : work();
+      if (job.route === 'admin') adminTail = pending.catch(() => {});
+      const task = pending.catch(err => reportError(`Google relay completion failed: ${String(err.message || err).slice(0,200)}`))
+        .finally(() => active.delete(task));
+      active.add(task);
+      return task;
+    },
+    drain() { return Promise.all(active); }
+  };
+}
+
 async function run() {
   if (!relayUrl || !/^https:\/\//i.test(relayUrl)) throw new Error('GAS_RELAY_URL must be an HTTPS Apps Script web-app URL.');
   if (relaySecret.length < 32) throw new Error('GAS_RELAY_SECRET must contain at least 32 characters.');
   if (!dashboardToken) throw new Error('DASHBOARD_RPC_TOKEN is missing.');
   console.log('Google relay worker started; job payloads and credentials are not logged.');
+  const pool = createJobPool(execute, (job,value,error) => relay({action:'complete',jobId:job.id,...(error?{error}:{value})}));
+  let failures = 0;
 
   while (!stopping) {
+    await pool.waitForSlot();
     try {
-      const claimed = await relay({action: 'claim'});
+      const started = Date.now();
+      const claimed = await relay({action: 'claim', waitMs: 15000});
+      failures = 0;
       const job = claimed && claimed.job;
       if (!job) {
-        await delay(pollMs);
+        // Compatible with old deployments, but no extra idle delay after long-polling.
+        await delay(Math.max(0, pollMs - (Date.now() - started)));
         continue;
       }
-      try {
-        const value = await execute(job);
-        await relay({action: 'complete', jobId: job.id, value});
-      } catch (error) {
-        await relay({action: 'complete', jobId: job.id, error: String(error && error.message || error).slice(0, 400)});
-        console.error(`Relay job failed (${job.method}): ${String(error && error.message || error).slice(0, 200)}`);
-      }
+      pool.start(job);
     } catch (error) {
       console.error(`Google relay unavailable: ${String(error && error.message || error).slice(0, 200)}`);
-      await delay(Math.max(pollMs, 2000));
+      await delay(Math.min(30000, Math.max(pollMs, 2000) * Math.pow(2, Math.min(failures++, 3))));
     }
   }
+  await pool.drain();
 }
 
 process.on('SIGINT', () => { stopping = true; });
@@ -98,4 +126,4 @@ if (require.main === module) run().catch(error => {
   process.exitCode = 1;
 });
 
-module.exports = {ALLOWED_METHODS, ALLOWED_ADMIN_METHODS, postJson, execute, run};
+module.exports = {ALLOWED_METHODS, ALLOWED_ADMIN_METHODS, postJson, execute, createJobPool, run};
