@@ -22,9 +22,39 @@ $files = @(
 )
 
 Write-Host "Updating Connector from advisor_kpi commit $releaseRef ..."
+
+function Download-ConnectorFile([string]$Uri, [string]$Target) {
+  $temporary = "$Target.download"
+  Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $temporary -TimeoutSec 120
+  }
+  catch {
+    Write-Host "PowerShell download failed; retrying with curl.exe ..."
+    if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
+      throw
+    }
+
+    & curl.exe --fail --silent --show-error --location --http1.1 `
+      --retry 5 --retry-delay 2 --retry-all-errors `
+      --connect-timeout 20 --max-time 120 `
+      --output $temporary $Uri
+    if ($LASTEXITCODE -ne 0) {
+      throw "curl.exe failed while downloading $Uri with exit code $LASTEXITCODE."
+    }
+  }
+
+  if (-not (Test-Path -LiteralPath $temporary)) {
+    throw "Download did not create a file: $Uri"
+  }
+  Move-Item -LiteralPath $temporary -Destination $Target -Force
+}
+
 foreach ($file in $files) {
   Write-Host "Downloading $file ..."
-  Invoke-WebRequest -UseBasicParsing -Uri "$base/$file" -OutFile (Join-Path $connectorDir $file)
+  Download-ConnectorFile "$base/$file" (Join-Path $connectorDir $file)
 }
 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
