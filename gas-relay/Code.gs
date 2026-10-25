@@ -126,6 +126,15 @@ function enqueue_(body) {
   const job = {id: jobId, state: 'queued', route: route, method: method, args: Array.isArray(body.args) ? body.args : [], createdAt: now};
   const file = queueFolder_().createFile('job-' + jobId + '.json', JSON.stringify(job), MimeType.PLAIN_TEXT);
   cachePut_('relay-file:' + jobId, file.getId(), 600);
+  if (cacheReadJob_(job)) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(5000);
+    try {
+      const pending = pendingReadJobs_();
+      pending.push(jobId);
+      cachePut_('relay-pending-reads', JSON.stringify(pending.slice(-100)), 600);
+    } finally { lock.releaseLock(); }
+  }
   cachePut_('relay-wake', Utilities.getUuid(), 600);
   return {jobId: jobId};
 }
@@ -151,17 +160,30 @@ function claimNext_() {
   const lock = LockService.getScriptLock();
   lock.waitLock(5000);
   try {
+    const pending = pendingReadJobs_();
+    while (pending.length) {
+      const id = pending.shift();
+      cachePut_('relay-pending-reads', JSON.stringify(pending), 600);
+      const job = cachedReadJob_(id);
+      if (!job || job.state !== 'queued') continue;
+      job.state = 'claimed';job.claimedAt = Date.now();
+      if (cacheReadJob_(job)) return claimedJob_(job);
+    }
     const files = queueFolder_().getFiles();
     while (files.hasNext()) {
       const file = files.next();
       if (!/^job-[a-f0-9-]+\.json$/i.test(file.getName())) continue;
+      const name = file.getName(), id = name.slice(4, -5), cached = cachedReadJob_(id);
+      if (cached && (cached.state === 'done' || (cached.state === 'claimed' && Date.now() - Number(cached.claimedAt || 0) <= RELAY.CLAIM_TTL_MS))) continue;
       const job = parseFile_(file);
       if (!job || (job.state !== 'queued' && !(job.state === 'claimed' && Date.now() - Number(job.claimedAt || 0) > RELAY.CLAIM_TTL_MS))) continue;
       job.state = 'claimed';
       job.claimedAt = Date.now();
-      file.setContent(JSON.stringify(job));
+      // A dashboard read is safely repeatable after a crash. Its queued file
+      // remains durable; only the short lease needs the fast cache path.
+      if (!cacheReadJob_(job)) file.setContent(JSON.stringify(job));
       cachePut_('relay-file:' + job.id, file.getId(), 600);
-      return {id: job.id, route: job.route || 'dashboard', method: job.method, args: job.args};
+      return claimedJob_(job);
     }
     return null;
   } finally {
@@ -169,12 +191,30 @@ function claimNext_() {
   }
 }
 
+function claimedJob_(job) {
+  return {id: job.id, route: job.route || 'dashboard', method: job.method, args: job.args};
+}
+function pendingReadJobs_() {
+  try { const value = JSON.parse(cacheGet_('relay-pending-reads') || '[]');return Array.isArray(value) ? value : []; }
+  catch (err) { return []; }
+}
+function cachedReadJob_(id) {
+  try { return JSON.parse(cacheGet_('relay-read-job:' + id) || 'null'); } catch (err) { return null; }
+}
+function cacheReadJob_(job) {
+  if (job.route !== 'dashboard') return false;
+  const raw = JSON.stringify(job);
+  if (raw.length > 20000) return false;
+  return cachePut_('relay-read-job:' + job.id, raw, 600);
+}
+
 function complete_(body) {
   const jobId = String(body.jobId || '');
   const file = findJobFile_(jobId);
   if (!file) throw new Error('Relay job not found.');
   const job = parseFile_(file);
-  if (!job || job.state !== 'claimed') throw new Error('Relay job is not claimed.');
+  const repeatableRead = job && job.route === 'dashboard' && RELAY.METHODS.indexOf(job.method) >= 0;
+  if (!job || (job.state !== 'claimed' && !(repeatableRead && job.state === 'queued'))) throw new Error('Relay job is not claimed.');
   if (body.error) {
     job.state = 'done';
     job.error = String(body.error).slice(0, 500);
@@ -187,6 +227,7 @@ function complete_(body) {
   }
   job.completedAt = Date.now();
   file.setContent(JSON.stringify(job));
+  cacheReadJob_({...job, value: undefined});
   cachePutJson_('relay-result:' + jobId, {value: job.value, error: job.error || null});
   return {accepted: true};
 }
@@ -199,7 +240,8 @@ function waitForResult_(body) {
   while (true) {
     const cached = cacheGetJson_('relay-result:' + jobId);
     if (cached) return consumeResult_(jobId, cached);
-    if (Date.now() >= nextDriveCheck) {
+    const pending = cachedReadJob_(jobId);
+    if ((!pending || pending.state === 'done') && Date.now() >= nextDriveCheck) {
       const file = findJobFile_(jobId);
       if (!file) return {done: true, error: 'Relay job expired or was already consumed.'};
       const job = parseFile_(file);
@@ -220,6 +262,7 @@ function consumeResult_(jobId, result) {
     file.setTrashed(true);
     cacheRemoveJson_('relay-result:' + jobId);
     cacheRemove_('relay-file:' + jobId);
+    cacheRemove_('relay-read-job:' + jobId);
     return {done: true, value: result.value, error: result.error || null};
   } finally { lock.releaseLock(); }
 }
@@ -264,7 +307,7 @@ function cacheGet_(key) {
   try { return CacheService.getScriptCache().get(key); } catch (err) { return null; }
 }
 function cachePut_(key, value, ttl) {
-  try { CacheService.getScriptCache().put(key, value, ttl); } catch (err) {}
+  try { CacheService.getScriptCache().put(key, value, ttl); return true; } catch (err) { return false; }
 }
 function cacheRemove_(key) {
   try { CacheService.getScriptCache().remove(key); } catch (err) {}

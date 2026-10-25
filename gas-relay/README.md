@@ -26,6 +26,8 @@ The signed `request` action combines enqueue and result waiting in one HTTP roun
 
 Drive remains the recoverable queue. Script Cache holds wake hints, file IDs, and bounded result chunks; evicted/missing cache entries fall back to Drive. Waiting never scans the entire folder, and expiry cleanup is throttled to once per minute. The HMAC, replay protection, method allowlists and private-folder requirements are unchanged.
 
+Small dashboard reads also have a cached pending index and lease, so claiming them does not require a folder scan or a Drive write. Their queued files remain recoverable and their completed results are written durably before acknowledgement. A lost lease hint may safely repeat a read; admin operations always require the original durable claim.
+
 Dashboard summaries use a 15-second GAS read cache and a bounded 20-second page-memory cache (at most 35 seconds combined, without new browser persistence). Detail caches expire after 10 seconds. Filter/period arguments and the admin cache revision isolate server cache keys. In-flight duplicate reads are shared, and late filter responses cannot overwrite newer selections. Database queries and KPI rules are unchanged.
 
 Read-only measurement: run `node ops/benchmark-google-latency.cjs` before upgrading, then `node ops/benchmark-google-latency.cjs --combined` afterward. Ignored `runtime/latency-*.json` files contain only timings and result checksums; the comparison excludes volatile generation/age fields and SQL tie ordering, not KPI values.

@@ -99,6 +99,26 @@ test('waiting does not repeatedly scan Drive and request action still enforces t
   assert.equal(s.send({action:'request',route:'admin',method:'arbitrarySql'}).ok,false);
 });
 
+test('small read claims avoid Drive scans, but completed results remain durable across cache eviction',()=>{
+  const s=server();s.send({action:'health'});
+  const jobId=s.send({action:'enqueue',method:'getDashboardMeta'}).result.jobId;
+  const before=s.stats();assert.equal(s.send({action:'claim'}).result.job.id,jobId);
+  assert.deepEqual(s.stats(),before);
+  s.send({action:'complete',jobId,value:{total:80}});s.clearCache();
+  assert.deepEqual(s.send({action:'wait',jobId}).result.value,{total:80});
+});
+
+test('admin operations still require durable claims and read leases recover if cache hints disappear',()=>{
+  const s=server();
+  const adminId=s.send({action:'enqueue',route:'admin',method:'saveCrmConfig'}).result.jobId;
+  assert.equal(s.send({action:'complete',jobId:adminId,value:{ok:true}}).ok,false);
+  assert.equal(s.send({action:'claim'}).result.job.id,adminId);
+  assert.equal(s.send({action:'complete',jobId:adminId,value:{ok:true}}).ok,true);
+  const readId=s.send({action:'enqueue',method:'getDashboardMeta'}).result.jobId;
+  s.send({action:'claim'});s.clearCache();
+  assert.equal(s.send({action:'claim'}).result.job.id,readId);
+});
+
 test('a dashboard request is claimed once and its result is consumed into Drive trash', () => {
   const s=server();
   const jobId=s.send({action:'enqueue',method:'getDashboardMeta',args:[]}).result.jobId;
