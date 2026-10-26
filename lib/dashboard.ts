@@ -105,7 +105,7 @@ export async function getOpenSummary(filters:any={}){
  return {kpis:{...first(r[1]),...first(r[0])},advisors:r[2],dimensions,dataSource:openSource.source,sourceStatus:openSource};
 }
 
-export async function getOpenExportRows(filters:any={}){
+export async function getOpenExportRows(filters:any={},offset?:number,limit?:number){
  const openSource=await operationalOpenLeadsSource();const openTable=openSource.table;
  const args:any[]=[];let where=' WHERE 1=1';
  where+=sqlIn('o.owner',norm(filters.advisor),args);
@@ -136,10 +136,10 @@ export async function getOpenExportRows(filters:any={}){
   o.next_followup_at AS "تاریخ پیگیری بعدی",o.campaign AS "کمپین",o.source AS "منشا",o.source_software AS "نرم افزار منشا",
   o.business_unit AS "واحد تجاری",o.age_days AS "سن لید"
   FROM open_leads o LEFT JOIN team_members t ON t.name=o.owner ${where}
-  ORDER BY o.age_days DESC,o.owner,o.lead_number`).replaceAll('open_leads',openTable),args);
+  ORDER BY o.age_days DESC,o.owner,o.lead_number ${limit===undefined?'':'LIMIT ? OFFSET ?'}`).replaceAll('open_leads',openTable),limit===undefined?args:[...args,Math.max(1,Math.min(10000,Math.floor(limit)||1000)),Math.max(0,Math.min(200000,Math.floor(offset||0)))]);
 }
 
-export async function getOpenNearDeadlineDetails(leadType:string,owner:string,filters:any={}){
+export async function getOpenNearDeadlineDetails(leadType:string,owner:string,filters:any={},page?:{offset:number,limit:number}){
  const openSource=await operationalOpenLeadsSource();const openTable=openSource.table;
  if(!['حقیقی','حقوقی'].includes(leadType))throw new Error('نوع لید برای سررسید نامعتبر است.');
  const min=leadType==='حقیقی'?15:57,max=leadType==='حقیقی'?18:60,args:any[]=[leadType,min,max];
@@ -153,5 +153,5 @@ export async function getOpenNearDeadlineDetails(leadType:string,owner:string,fi
   where+=` AND o.owner IN (${pSql})`;args.push(...pArgs);
  }
  where+=sqlIn('o.lead_type',norm(filters.leadType),args);where+=sqlIn('o.customer_rank',norm(filters.customerRank),args);where+=sqlIn('o.campaign',norm(filters.campaign),args);where+=sqlIn('o.last_status',norm(filters.lastStatus),args);where+=sqlIn('o.source',norm(filters.source),args);
- return tursoSelect((`SELECT o.lead_number AS "leadNumber",o.created_date AS "createdDate",o.age_days AS "ageDays",CASE WHEN TRIM(COALESCE(o.lead_type,''))='حقیقی' THEN 18-o.age_days WHEN TRIM(COALESCE(o.lead_type,''))='حقوقی' THEN 60-o.age_days END AS "remainingDays",o.customer_rank AS "customerRank",o.last_status AS "lastStatus",o.next_call_reason AS "nextCallReason",o.customer_name AS "customerName",t.name AS owner,o.lead_type AS "leadType",o.source,o.campaign,o.source_software AS "sourceSoftware",o.business_unit AS "businessUnit" FROM open_leads o INNER JOIN team_members t ON t.name=o.owner ${where} ORDER BY "remainingDays" ASC,o.age_days DESC,o.owner LIMIT 4000`).replaceAll('open_leads',openTable),args);
+ return tursoSelect((`SELECT o.lead_number AS "leadNumber",o.created_date AS "createdDate",o.age_days AS "ageDays",CASE WHEN TRIM(COALESCE(o.lead_type,''))='حقیقی' THEN 18-o.age_days WHEN TRIM(COALESCE(o.lead_type,''))='حقوقی' THEN 60-o.age_days END AS "remainingDays",o.customer_rank AS "customerRank",o.last_status AS "lastStatus",o.next_call_reason AS "nextCallReason",o.customer_name AS "customerName",t.name AS owner,o.lead_type AS "leadType",o.source,o.campaign,o.source_software AS "sourceSoftware",o.business_unit AS "businessUnit" FROM open_leads o INNER JOIN team_members t ON t.name=o.owner ${where} ORDER BY "remainingDays" ASC,o.age_days DESC,o.owner,o.lead_number LIMIT ${page?Math.max(1,Math.min(200,Math.floor(page.limit)||100))+1:4000} OFFSET ${page?Math.max(0,Math.min(200000,Math.floor(page.offset)||0)):0}`).replaceAll('open_leads',openTable),args);
 }

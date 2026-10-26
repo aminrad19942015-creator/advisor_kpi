@@ -1,7 +1,10 @@
 <script>
 const $=id=>document.getElementById(id);
 const state={data:null};
+const interactiveClient=createInteractiveReportClient();
 const readRpc=createReadRpcClient((method,args)=>new Promise((resolve,reject)=>{
+ try{const local=interactiveClient.read(method,args);if(local.hit){document.documentElement.dataset.lastReadSource='browser';resolve(local.value);return;}}catch(e){console.warn('Local calculation unavailable; using PostgreSQL',e);}
+ document.documentElement.dataset.lastReadSource='remote';
  google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[method](...args);
 }));
 const latestRead=createLatestReadRunner(readRpc);
@@ -613,10 +616,7 @@ function renderOpen(){
 function cachedOpenDetailRun(){
  let success=()=>{},failure=()=>{};
  const runner={withSuccessHandler(fn){success=fn;return runner;},withFailureHandler(fn){failure=fn;return runner;}};
- for(const method of ['getOpenLeadDetails','getOpenNearDeadlineDetails'])runner[method]=(...args)=>latestRead('openDetail',method,args,(rows,info)=>{
-  success(rows);
-  if(info?.refreshing||info?.error)$('openDetailSub').textContent+=info.error?' — نسخهٔ قبلی؛ بروزرسانی ناموفق':' — نسخهٔ قبلی؛ در حال بروزرسانی…';
- },error=>{if(!readRpc.peek(method,args))failure(error);else toast('دریافت نسخهٔ تازه ناموفق بود.');},()=>{});
+ for(const method of ['getOpenLeadDetails','getOpenNearDeadlineDetails'])runner[method]=(...args)=>showCachedDetail('openDetail','جزئیات سرنخ',method,args,success);
  return runner;
 }
 function loadOpenDeadlineDetail(leadType,owner){
@@ -875,15 +875,29 @@ async function exportDashboardTab(tab){
    if(btn){btn.disabled=false;btn.textContent=original;}
  }
 }
-function showCachedDetail(id,title,method,args){
- const box=$(id);box.style.display='block';
+function showCachedDetail(id,title,method,args,customRender){
+ const box=$(id);box.style.display='block';const frozenArgs=JSON.parse(JSON.stringify(args));
+ delete box.dataset.loadedRows;
+ let rows=[],revision=interactiveClient.revision||'',nextOffset=0,hasMore=false;
  $(id+'Sub').textContent='در حال دریافت '+title+'…';
- $(id+'Body').innerHTML='<div class="empty">در حال دریافت…</div>';
+ $(id+'Body').innerHTML='<div class="empty">در حال دریافت ۱۰۰ ردیف نخست…</div>';
  box.scrollIntoView({behavior:'smooth',block:'start'});
- latestRead(id,method,args,(rows,info)=>{
-  $(id+'Sub').textContent=title+' — '+fa(rows.length)+' رکورد'+(info?.error?' — نسخهٔ قبلی؛ بروزرسانی ناموفق':info?.refreshing?' — نسخهٔ قبلی؛ در حال بروزرسانی…':'');
-  $(id+'Body').innerHTML=rowsTable(rows);makeTableSortable(box);
- },e=>{if(!readRpc.peek(method,args))$(id+'Body').innerHTML='<div class="data-note">'+safe(e?.message||e)+'</div>';else toast('بروزرسانی جزئیات ناموفق بود؛ نتیجهٔ قبلی نمایش داده می‌شود.');},()=>{});
+ function readPage(offset){
+  const button=box.querySelector('.detail-next-page');if(button)button.disabled=true;
+  latestRead(id,'getDetailPage',[method,frozenArgs,offset,100,revision],(page,info)=>{
+   if(page.stale){$(id+'Sub').textContent='داده‌ها تغییر کرده‌اند؛ گزارش را تازه‌سازی و دوباره جزئیات را باز کنید.';return;}
+   if(!Array.isArray(page.rows))throw new Error('پاسخ جزئیات نامعتبر است.');
+   revision=page.revision||revision;
+   if(offset===0)rows=page.rows.slice();else rows=rows.slice(0,offset).concat(page.rows);
+   nextOffset=page.nextOffset;hasMore=page.hasMore;
+   if(customRender)customRender(rows);else {$(id+'Body').innerHTML=rowsTable(rows);makeTableSortable(box);}
+   $(id+'Sub').textContent=title+' — '+fa(rows.length)+' رکورد نمایش داده شده'+(hasMore?'؛ ادامه دارد':'')+(info?.error?' — نسخهٔ قبلی؛ بروزرسانی ناموفق':info?.refreshing?' — در حال بروزرسانی…':'');
+   const old=box.querySelector('.detail-next-page');if(old)old.remove();
+   if(hasMore){const next=document.createElement('button');next.className='clear detail-next-page';next.textContent='نمایش ۱۰۰ ردیف بعدی';next.onclick=()=>readPage(nextOffset);$(id+'Body').appendChild(next);}
+   box.dataset.loadedRows=String(rows.length);
+  },e=>{if(!rows.length)$(id+'Body').innerHTML='<div class="data-note">'+safe(e?.message||e)+'</div>';else toast('دریافت ادامهٔ جزئیات ناموفق بود.');},()=>{const button=box.querySelector('.detail-next-page');if(button)button.disabled=false;});
+ }
+ readPage(0);
 }
 function loadActivityDetail(period,type,user){showCachedDetail(period+'Detail',user,'getActivityDetails',[period,type,user,filterState[period]||{}]);}
 function loadPeriodKpiDetail(period,type,title){showCachedDetail(period+'Detail',title,'getPeriodKpiDetails',[period,type,filterState[period]||{}]);}
@@ -929,6 +943,11 @@ function loadInitialPeriod(period){
  if(periodInitialPending[period])return;
  if(periodInitialLoaded[period]){if(Date.now()-(periodReadAt[period]||0)>60000)applyPeriodFilters(period);return;}
  const requestedFilters=JSON.parse(JSON.stringify(filterState[period]));
+ const calculated=interactiveClient.read('getFilteredPeriodSummary',[period,requestedFilters]);
+ if(calculated.hit&&state.data?.periods?.[period]){
+  document.documentElement.dataset.lastReadSource='browser';
+  renderInitialPeriod(period,{...state.data.periods[period],summary:calculated.value},'interactive',requestedFilters);return;
+ }
  const prepared=initialPeriods.read(period,requestedFilters);
  if(prepared){renderInitialPeriod(period,prepared,'preloaded',requestedFilters);return;}
  const stale=initialPeriods.readStale(period,requestedFilters);
@@ -973,6 +992,8 @@ function loadInitialPeriod(period){
 function switchPage(id){
  document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===id));
  document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===id));
+ if(interactiveClient.revision&&id==='teamPage')applyTeamFilters();
+ if(interactiveClient.revision&&id==='openPage')applyOpenFilters();
  if(id==='dailyPage')loadInitialPeriod('daily');
  if(id==='weeklyPage')loadInitialPeriod('weekly');
  if(id==='monthlyPage')loadInitialPeriod('monthly');
@@ -1008,13 +1029,14 @@ google.script.run
    }
    document.querySelector('.loading-card p').textContent='خطا در دریافت اطلاعات: '+(e.message||e);
  })
- .withSuccessHandler(data=>{
+ .withSuccessHandler(async data=>{
    if(validInitialPayload(data)){
-     const {periods,...initialSnapshot}=data;
+     try{await interactiveClient.seed(data);}catch(e){console.warn('Interactive snapshot unavailable',e);}
+     const {periods,interactive,...initialSnapshot}=data;
      snapshotWrite('initial',initialSnapshot);
      readRpc.remember('getTeamFilteredSummary',[filterState.team],data.team);
      readRpc.remember('getOpenFilteredSummary',[filterState.open],data.open);
-     state.data=data;
+     state.data={...data,interactive:undefined};
      renderAll();
      return;
    }
@@ -1027,5 +1049,32 @@ google.script.run
    document.querySelector('.loading-card p').textContent='پاسخ نامعتبر از سرویس داده دریافت شد.';
  })
  .getDashboardInitialPayload(filterState.open);
+
+// The heartbeat is a small native Google-cache read, not a queue/DB round trip.
+// A new full report is fetched only when the authoritative data revision changes.
+let revisionCheckPending=false;
+setInterval(()=>{
+ if(revisionCheckPending||document.hidden||!interactiveClient.revision)return;
+ revisionCheckPending=true;
+ google.script.run.withFailureHandler(()=>{revisionCheckPending=false;}).withSuccessHandler(status=>{
+  revisionCheckPending=false;
+  if(!status?.available)return;
+  if(status.revision===interactiveClient.revision){interactiveClient.confirm(status);return;}
+  revisionCheckPending=true;
+  google.script.run.withFailureHandler(()=>{revisionCheckPending=false;}).withSuccessHandler(async data=>{
+   try{
+    if(!validInitialPayload(data)||!await interactiveClient.seed(data))return;
+    readRpc.clear();
+    for(const scope of ['team','open','daily','weekly','monthly','reportMonth','openDetail','dailyDetail','weeklyDetail','monthlyDetail','reportMonthDetail','dailyDimensionDetail','weeklyDimensionDetail','monthlyDimensionDetail','reportMonthDimensionDetail'])latestRead.invalidate(scope);
+    state.data.meta=data.meta;state.data.periods=data.periods;initialPeriods.seed(data.periods);
+    filterOptions.team=data.teamFilters;filterOptions.open=data.openFilters;
+    for(const p of ['daily','weekly','monthly','reportMonth'])if(data.periods?.[p])filterOptions.periodCampaign[p]=data.periods[p].campaignOptions||[];
+    for(const p of ['daily','weekly','monthly','reportMonth'])periodReadAt[p]=0;
+    const active=document.querySelector('.page.active')?.id;
+    if(active==='teamPage')applyTeamFilters();else if(active==='openPage')applyOpenFilters();else if(active?.endsWith('Page'))applyPeriodFilters(active.slice(0,-4));
+   }catch(e){console.warn('Report refresh failed',e);}finally{revisionCheckPending=false;}
+  }).getDashboardInitialPayload({advisor:[],seniorLead:[],role:[],team:[],personUnit:[],age:'',leadType:['حقیقی'],nextCallReason:[],customerRank:[],campaign:['Ayar','LeadAdvice'],source:[],lastStatus:[]});
+ }).getInteractiveRevision();
+},30000);
 
 </script>

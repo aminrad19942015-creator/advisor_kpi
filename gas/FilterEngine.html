@@ -1,0 +1,113 @@
+<script>
+// Pure calculations on a bounded, non-customer-identifying report snapshot.
+// No network, storage, credentials or DOM access. PostgreSQL remains authoritative.
+const ReportEngine=(()=>{
+ const list=v=>(Array.isArray(v)?v:v?[v]:[]).filter(Boolean);
+ const selected=(v,filter)=>!list(filter).length||list(filter).includes(v);
+ const trim=v=>String(v??'').replace(/^ +| +$/g,'');
+ const normalized=v=>String(v??'').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[\u200c\u200f\u202a-\u202e]/g,' ').replace(/\s+/g,' ').trim();
+ const amlSubjects=new Set(['تکمیل فرم شناسایی مضاعف','بروز رسانی اطلاعات فرم مشخصات','بروز رسانی اطلاعات مشخصات و تکمیل فرم شناسایی']);
+ const aml=s=>amlSubjects.has(trim(s).replace(/ي/g,'ی').replace(/ك/g,'ک'));
+ const talked=s=>!['عدمپاسخ(2بار)','عدمپاسخ(۲بار)','عدمتعیینوضعیتدرزمانمقرر'].includes(trim(s).replace(/ /g,''));
+ const noResponse=s=>['عدمپاسخ(2بار)','عدمپاسخ(۲بار)'].includes(trim(s).replace(/ /g,''));
+ const total=r=>r.talked+r.opp+r.aml+r.t8+r.tickets;
+ const dim=(rows,index,blank='بدون مقدار')=>{
+  const m=new Map();for(const r of rows){const label=r[index]||blank;m.set(label,(m.get(label)||0)+1);}
+  return [...m].sort((a,b)=>b[1]-a[1]);
+ };
+ function period(data,filters={}){
+  if(!data||data.schema!==1)throw Error('Unsupported report snapshot');
+  const members=data.members,people=new Map(members.map(p=>[p.name,p]));
+  const canonical=new Map();for(const p of members){const k=normalized(p.name);if(k&&!canonical.has(k))canonical.set(k,p.name);}
+  const membership=p=>p&&selected(p.name,filters.advisor)&&selected(p.teamLead,filters.teamLead)&&selected(p.seniorLead,filters.seniorLead)&&selected(p.team,filters.team)&&selected(p.role,filters.role);
+  const hasTeam=['teamLead','seniorLead','team','role'].some(k=>list(filters[k]).length);
+  const byPerson=name=>selected(name,filters.advisor)&&(!hasTeam||membership(people.get(name)));
+  const campaigns=list(filters.campaign),linked=new Set(data.leads.filter(r=>campaigns.includes(r[2])&&r[1]).map(r=>r[1]));
+  const inCampaign=(r,source)=>!campaigns.length||source==='ticket'||(source==='lead'?campaigns.includes(r[2]):linked.has(r[1]));
+  const select=(rows,source,person=true)=>rows.filter(r=>(!person||byPerson(r[0]))&&inCampaign(r,source));
+  const L=select(data.leads,'lead'),O=select(data.opps,'opp'),C=select(data.calls,'call'),T=select(data.tickets,'ticket');
+  const days=[...new Set([...L.map(r=>r[7]),...O.map(r=>r[4]),...C.map(r=>r[4]),...T.map(r=>r[3])].filter(Boolean))].sort(),dayCount=Math.max(1,days.length);
+  const advisorMap=new Map(),ensure=raw=>{
+   if(!raw)return null;const name=people.has(raw)?raw:canonical.get(normalized(raw));if(!name)return null;
+   if(!advisorMap.has(name)){const p=people.get(name);advisorMap.set(name,{name,teamLead:p.teamLead||'',seniorLead:p.seniorLead||'',team:p.team||'',role:p.role||'',leads:0,talked:0,opps:0,calls:0,aml:0,t8:0,tickets:0,attendanceDays:0});}
+   return advisorMap.get(name);
+  };
+  const group=rows=>{const m=new Map();for(const r of rows)if(r[0]){if(!m.has(r[0]))m.set(r[0],[]);m.get(r[0]).push(r);}return m;};
+  for(const [name,rows] of group(L)){const a=ensure(name);if(a){a.leads=rows.length;a.talked=rows.filter(r=>talked(r[3])).length;}}
+  for(const [name,rows] of group(O)){const a=ensure(name);if(a)a.opps=rows.filter(r=>r[2]==='OPP').length;}
+  for(const [name,rows] of group(C)){const a=ensure(name);if(a){a.aml=rows.filter(r=>aml(r[2])).length;a.calls=rows.length-a.aml;a.t8=rows.filter(r=>String(r[3]||'').toUpperCase()==='T8').length;}}
+  for(const [name,rows] of group(T)){const a=ensure(name);if(a)a.tickets=rows.length;}
+  const attendance=new Map();
+  const add=(name,day,n)=>{if(!name||!day)return;if(!attendance.has(name))attendance.set(name,new Map());const m=attendance.get(name);m.set(day,(m.get(day)||0)+n);};
+  for(const r of L)add(r[0],r[7],+talked(r[3]));
+  for(const r of C)add(r[0],r[4],+(String(r[3]||'').toUpperCase()==='T8')+(+aml(r[2])));
+  for(const r of T)add(r[0],r[3],1);
+  for(const [name,dates] of attendance){const a=ensure(name);if(a)a.attendanceDays=[...dates.values()].filter(n=>n>=5).length;}
+  const advisors=[...advisorMap.values()].map(a=>{const d=Math.max(1,a.attendanceDays);return {...a,total:a.talked+a.opps+a.aml+a.t8+a.tickets,callAvg:a.calls/d,amlAvg:a.aml/d,leadAvg:a.leads/d,talkedAvg:a.talked/d,oppAvg:a.opps/d,t8Avg:a.t8/d,ticketAvg:a.tickets/d,activityAvg:(a.talked+a.opps+a.aml+a.t8+a.tickets)/d};}).sort((a,b)=>b.total-a.total);
+  function trend(leads,opps,calls,tickets,predicate=()=>true){
+   const m=new Map(),touch=day=>{if(!m.has(day))m.set(day,{day,talked:0,opp:0,calls:0,aml:0,t8:0,tickets:0,total:0});return m.get(day);};
+   for(const r of leads)if(r[7]&&predicate(r[0]))touch(r[7]).talked+=+talked(r[3]);
+   for(const r of opps)if(r[4]&&r[2]==='OPP'&&predicate(r[0]))touch(r[4]).opp++;
+   for(const r of calls)if(r[4]&&predicate(r[0])){const x=touch(r[4]);x.aml+=+aml(r[2]);x.calls+=+!aml(r[2]);x.t8+=+(String(r[3]||'').toUpperCase()==='T8');}
+   for(const r of tickets)if(r[3]&&predicate(r[0]))touch(r[3]).tickets++;
+   return [...m.values()].sort((a,b)=>a.day.localeCompare(b.day)).map(r=>({...r,total:total(r)}));
+  }
+  const BL=select(data.leads,'lead',false),BO=select(data.opps,'opp',false),BC=select(data.calls,'call',false),BT=select(data.tickets,'ticket',false);
+  const known=name=>people.has(name),roleGroup=p=>p?.role==='راهنما'?'guide':p?.role==='مشاور'?'advisor':['مشاور ارشد','سرتیم'].includes(p?.role)?'senior':null;
+  const roleCounts={guide:0,advisor:0,senior:0},roleTrend={};for(const p of members){const g=roleGroup(p);if(g)roleCounts[g]++;}
+  for(const g of ['guide','advisor','senior'])roleTrend[g]=trend(BL,BO,BC,BT,name=>roleGroup(people.get(name))===g);
+  const callPairs=new Map();for(const r of C)if(!aml(r[2])&&r[1]&&r[0]!=null){const key=r[0]+'|'+r[1];callPairs.set(key,(callPairs.get(key)||0)+1);}
+  const handled=L.length,closed=handled,ta=L.filter(r=>talked(r[3])).length,noStatusCount=L.filter(r=>trim(r[3])==='عدم تعیین وضعیت در زمان مقرر').length,noResponseCount=L.filter(r=>noResponse(r[3])).length;
+  const oppLead=O.filter(r=>r[2]==='LEAD').length,opp=O.filter(r=>r[2]==='OPP').length,am=C.filter(r=>aml(r[2])).length,calls=C.length-am,t8=C.filter(r=>String(r[3]||'').toUpperCase()==='T8').length,tickets=T.length;
+  const memberCount=members.filter(membership).length,closeDays=L.map(r=>r[8]).filter(x=>x!==null&&x!==undefined),closeAvg=closeDays.length?closeDays.reduce((n,x)=>n+Number(x),0)/closeDays.length:null;
+  return {period:data.period,days,dayCount,unitAdvisorCount:members.length,roleTrend,roleCounts,kpis:{total:ta+opp+am+t8+tickets,handled,closed,talked:ta,noStatusCount,noStatusRate:handled?noStatusCount/handled*100:0,noResponseCount,noResponseRate:handled?noResponseCount/handled*100:0,oppLead,opp,calls,aml:am,t8,tickets,closeAvg,uniqueCalls:callPairs.size,repeatCalls:[...callPairs.values()].reduce((n,x)=>n+x-1,0),memberCount,callAvg:calls/dayCount,amlAvg:am/dayCount,closedAvg:closed/dayCount,talkedAvg:ta/dayCount,callAvgPerPerson:memberCount?calls/dayCount/memberCount:0,amlAvgPerPerson:memberCount?am/dayCount/memberCount:0,closedAvgPerPerson:memberCount?closed/dayCount/memberCount:0,talkedAvgPerPerson:memberCount?ta/dayCount/memberCount:0},advisors,dimensions:{leadState:dim(L,3),rank:dim(L,4),leadSource:dim(L,5),campaign:dim(L,2),oppKind:dim(O,2),oppStatus:dim(O,3),callSubject:dim(C,2),leadTicketTopic:dim(L,6),ticketState:dim(T,1),ticketSubject:dim(T,2)},trend:trend(L,O,C,T),teamTrend:trend(L,O,C,T,known),unitTrend:trend(BL,BO,BC,BT,known)};
+ }
+ function team(rows,filters={}){
+  const matching=rows.filter(p=>Object.entries({teamLead:'teamLead',seniorLead:'seniorLead',team:'team',gender:'gender',role:'role',businessUnit:'businessUnit'}).every(([k,col])=>selected(p[col],filters[k]))&&(!filters.search||String(p.name||'').includes(String(filters.search))));
+  const counts=key=>dim(matching.map(r=>[r[key]]),0);
+  return {rows:matching,kpis:{total:matching.length,teamLeads:matching.filter(p=>p.role==='تیم لید').length,teams:new Set(matching.map(p=>p.team).filter(Boolean)).size,seniorLeads:new Set(matching.map(p=>p.seniorLead).filter(Boolean)).size,advisors:matching.filter(p=>String(p.role||'').includes('مشاور')||String(p.role||'').includes('راهنما')).length,women:matching.filter(p=>p.gender==='خانم').length,men:matching.filter(p=>p.gender==='آقا').length},roleCounts:counts('role'),unitCounts:counts('businessUnit')};
+ }
+ function open(data,filters={}){
+  const people=new Map(data.members.map(p=>[p.name,p]));
+  const roles=['role','seniorLead','team','personUnit'],memberCols={role:'role',seniorLead:'seniorLead',team:'team',personUnit:'businessUnit'};
+  const hasMember=roles.some(k=>list(filters[k]).length);
+  const matches=r=>{
+   if(!selected(r[0],filters.advisor)||!selected(r[1],filters.leadType)||!selected(r[2],filters.customerRank)||!selected(r[3],filters.campaign)||!selected(r[4],filters.source)||!selected(r[5],filters.lastStatus))return false;
+   const p=people.get(r[0]);if(hasMember&&(!p||!roles.every(k=>selected(p[memberCols[k]],filters[k]))))return false;
+   const reasons=list(filters.nextCallReason);if(reasons.length&&!reasons.some(v=>v==='بدون تسک'?trim(r[6])==='':r[6]===v))return false;
+   const age=r[7],ranges={'0-3':[0,3],'4-7':[4,7],'8-14':[8,14],'15-30':[15,30],'31+':[31,Infinity]},range=ranges[filters.age];
+   return !range||(age!==null&&age>=range[0]&&age<=range[1]);
+  };
+  const all=data.rows.filter(matches),rows=all.filter(r=>people.has(r[0]));
+  const near=(r,legal=false)=>trim(r[1])===(legal?'حقوقی':'حقیقی')&&r[7]!==null&&r[7]>=(legal?57:15)&&r[7]<=(legal?60:18);
+  const oldest=rr=>{const ages=rr.map(r=>r[7]).filter(v=>v!==null);return ages.length?Math.max(...ages):null;};
+  const groups=new Map();for(const r of rows){if(!groups.has(r[0]))groups.set(r[0],[]);groups.get(r[0]).push(r);}
+  const advisors=[...groups].map(([name,rr])=>{const p=people.get(name);return {name,role:p.role||'',teamLead:p.teamLead||'',seniorLead:p.seniorLead||'',team:p.team||'',count:rr.length,oldest:oldest(rr),nearDeadlineReal:rr.filter(r=>near(r)).length,nearDeadlineLegal:rr.filter(r=>near(r,true)).length};}).sort((a,b)=>b.count-a.count);
+  return {kpis:{allTotal:all.length,unassigned:all.length?all.filter(r=>trim(r[8])==='').length:null,total:rows.length,owners:groups.size,oldest:oldest(rows),nearDeadlineReal:rows.length?rows.filter(r=>near(r)).length:null,nearDeadlineLegal:rows.length?rows.filter(r=>near(r,true)).length:null},advisors,dimensions:{businessUnit:dim(rows,8),leadType:dim(rows,1),nextCallReason:dim(rows,6,'بدون تسک'),customerRank:dim(rows,2),campaign:dim(rows,3),source:dim(rows,4),sourceSoftware:dim(rows,9),lastStatus:dim(rows,5)},dataSource:data.sourceStatus.source,sourceStatus:data.sourceStatus};
+ }
+ return {period,team,open};
+})();
+
+function createInteractiveReportClient(options={}){
+ const now=options.now||Date.now;let data=null,revision='',checkedAt=0,base=null;
+ return {
+  async seed(payload){
+   const encoded=payload?.interactive;
+   if(!encoded||encoded.encoding!=='gzip-base64'||typeof DecompressionStream==='undefined')return false;
+   const bytes=Uint8Array.from(atob(encoded.body),c=>c.charCodeAt(0));
+   const unpacked=await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).json();
+   if(!unpacked?.periods||!unpacked?.open)return false;
+   data=unpacked;revision=encoded.revision;checkedAt=Date.parse(payload.meta.generatedAt);base={team:payload.team};return true;
+  },
+  confirm(status){if(status?.available&&status.revision===revision)checkedAt=Number(status.checkedAt)||checkedAt;},
+  get revision(){return revision;},
+  read(method,args){
+   if(!data||!Number.isFinite(checkedAt)||now()-checkedAt>90000)return {hit:false};
+   if(method==='getFilteredPeriodSummary'&&data.periods[args[0]])return {hit:true,value:ReportEngine.period(data.periods[args[0]],args[1]||{})};
+   if(method==='getTeamFilteredSummary'&&!/[%_\\]/.test(args[0]?.search||''))return {hit:true,value:ReportEngine.team(base.team.rows,args[0]||{})};
+   if(method==='getOpenFilteredSummary')return {hit:true,value:ReportEngine.open(data.open,args[0]||{})};
+   return {hit:false};
+  }
+ };
+}
+</script>

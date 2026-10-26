@@ -49,8 +49,45 @@ function server() {
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../gas-relay/Code.gs'),'utf8'),context);
   const sendEnvelope = env => JSON.parse(context.doPost({postData:{contents:JSON.stringify(env)}}).text);
   return {files,cache,stats:()=>({scans,reads}),onSleep:fn=>{onSleep=fn;},clearCache:()=>cacheValues.clear(),advance:ms=>{now+=ms;},sendEnvelope,envelope:body=>makeEnvelope(secret,body,now),native:body=>context.signedReadCall(makeEnvelope(secret,body,now)),
+    snapshot:body=>context.signedSnapshot(makeEnvelope(secret,body,now)),
     send:body=>sendEnvelope(makeEnvelope(secret,body,now))};
 }
+
+test('proactive snapshots require authentication, exact filters, current revision and a live DB heartbeat',()=>{
+ const s=server(),revision='a'.repeat(64),args=[{campaign:['C'],role:[]}];
+ assert.equal(s.snapshot({action:'snapshot',args}).available,false);
+ assert.equal(s.send({action:'snapshotHeartbeat',revision}).result.needsPublish,true);
+ const value={interactive:{revision,encoding:'gzip-base64',body:'test'},team:{rows:[]},meta:{lastSyncAt:'original'},periods:{weekly:{meta:{generatedAt:'old'}}}};
+ assert.equal(s.send({action:'publishSnapshot',revision,args,value}).result.published,true);
+ const hit=s.snapshot({action:'snapshot',args:[{role:[],campaign:['C']}]});
+ assert.equal(hit.available,true);assert.equal(hit.value.meta.lastSyncAt,'original');
+ assert.notEqual(hit.value.periods.weekly.meta.generatedAt,'old');
+ assert.equal(s.snapshot({action:'snapshot',args:[{}]}).available,false);
+ s.advance(90001);assert.equal(s.snapshot({action:'snapshot',args}).available,false);
+ assert.equal(s.send({action:'snapshotHeartbeat',revision}).result.needsPublish,false);
+ assert.equal(s.snapshot({action:'snapshot',args}).available,true);
+ s.cache.remove(JSON.parse(s.cache.get('interactive-manifest')).key+':0');
+ assert.equal(s.snapshot({action:'snapshot',args}).available,false);
+ assert.equal(s.send({action:'snapshotHeartbeat',revision}).result.needsPublish,true);
+ assert.equal(s.snapshot({action:'snapshotMeta'}).available,false);
+ assert.equal(s.files.length,0);
+ assert.equal(s.sendEnvelope({body:{action:'publishSnapshot',revision,args,value}}).ok,false);
+});
+
+test('precomputed first detail pages never match different filters, offsets or database revisions',()=>{
+ const s=server(),revision='b'.repeat(64),args=[{}];
+ s.send({action:'publishSnapshot',revision,args,value:{interactive:{revision},team:{rows:[]},periods:{},meta:{}}});
+ const page={rows:[{call_id:'test'}],hasMore:true,nextOffset:100,revision};
+ assert.equal(s.send({action:'publishDetails',revision,pages:{'monthly|calls':page}}).ok,true);
+ const request={action:'snapshotDetail',method:'getPeriodKpiDetails',args:['monthly','calls',{}],offset:0,limit:100,revision};
+ assert.equal(s.snapshot(request).value.rows[0].call_id,'test');
+ assert.equal(s.snapshot({...request,offset:100}).available,false);
+ assert.equal(s.snapshot({...request,args:['monthly','calls',{advisor:['A']}]}).available,false);
+ assert.equal(s.snapshot({...request,revision:'c'.repeat(64)}).value.stale,true);
+ assert.equal(s.send({action:'snapshotHeartbeat',revision:'c'.repeat(64)}).result.needsPublish,true);
+ assert.equal(s.snapshot(request).available,false);
+ assert.equal(s.files.length,0);
+});
 
 test('unauthenticated, tampered and replayed requests cannot modify the private queue', () => {
   const s=server();

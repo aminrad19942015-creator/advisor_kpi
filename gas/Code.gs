@@ -150,7 +150,7 @@ function fetchDashboardRpc_(method, args) {
     if (!relayUrl || !/^https:\/\//i.test(relayUrl) || !relaySecret || relaySecret.length < 32) {
       throw new Error('Google relay configuration is incomplete.');
     }
-    return fetchDashboardRpcViaRelay_(relayUrl, relaySecret, method, args);
+    return decodeRpcTransport_(fetchDashboardRpcViaRelay_(relayUrl, relaySecret, method, args));
   }
 
   const cfg = rpcConfig_();
@@ -238,6 +238,7 @@ function relayCall_(url, secret, body) {
 
 function fetchDashboardRpcViaRelay_(url, secret, method, args) {
   const allowed = [
+    'getDetailPage',
     'getDashboardBootstrap', 'getDashboardInitialPayload', 'getPeriodInitialPayload',
     'getTeamFilteredSummary', 'getTeamFilterOptions', 'getOpenFilteredSummary',
     'getOpenFilterOptions', 'getOpenLeadDetails', 'getOpenNearDeadlineDetails',
@@ -248,6 +249,18 @@ function fetchDashboardRpcViaRelay_(url, secret, method, args) {
   ];
   if (allowed.indexOf(String(method)) < 0) throw new Error('RPC method is not allowed through the Google relay.');
   return relayRpc_(url, secret, 'dashboard', method, args);
+}
+
+function decodeRpcTransport_(value){
+ if(value&&value.__transport==='gzip-json-v1')return JSON.parse(Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(value.body),'application/gzip')).getDataAsString('UTF-8'));
+ return value;
+}
+function getDetailPage(method,args,offset,limit,revision){
+ const secret=String(PropertiesService.getScriptProperties().getProperty(GAS_CONFIG.RELAY_SECRET_PROPERTY)||'');
+ if(secret&&typeof AdvisorQueue!=='undefined'&&typeof AdvisorQueue.signedSnapshot==='function'){
+  try{const hit=AdvisorQueue.signedSnapshot(relayEnvelope_(secret,{action:'snapshotDetail',method:method,args:args||[],offset:offset||0,limit:limit||100,revision:revision||''}));if(hit.available)return decodeRpcTransport_(hit.value);}catch(e){}
+ }
+ return cachedReadRpc_('getDetailPage',[method,args||[],offset||0,limit||100,revision||''],10);
 }
 
 function relayRpc_(url, secret, route, method, args, skipNative) {
@@ -300,6 +313,10 @@ function cachedReadRpc_(method, args, ttlSeconds) {
 }
 
 function getDashboardInitialPayload(openFilters) {
+  const props=PropertiesService.getScriptProperties(),secret=String(props.getProperty(GAS_CONFIG.RELAY_SECRET_PROPERTY)||'');
+  if(secret&&typeof AdvisorQueue!=='undefined'&&typeof AdvisorQueue.signedSnapshot==='function'){
+    try{const hit=AdvisorQueue.signedSnapshot(relayEnvelope_(secret,{action:'snapshot',args:[openFilters||{}]}));if(hit.available)return hit.value;}catch(e){}
+  }
   return cachedRpc_(
     'getDashboardInitialPayload',
     [openFilters || {}],
@@ -312,6 +329,12 @@ function getDashboardInitialPayload(openFilters) {
     ).slice(0, 24),
     45
   );
+}
+
+function getInteractiveRevision(){
+ const secret=String(PropertiesService.getScriptProperties().getProperty(GAS_CONFIG.RELAY_SECRET_PROPERTY)||'');
+ if(!secret||typeof AdvisorQueue==='undefined'||typeof AdvisorQueue.signedSnapshot!=='function')return {available:false};
+ try{return AdvisorQueue.signedSnapshot(relayEnvelope_(secret,{action:'snapshotMeta'}));}catch(e){return {available:false};}
 }
 
 function getPeriodInitialPayload(period, filters) {

@@ -7,8 +7,9 @@ const RELAY = {
   MAX_WAIT_MS: 18000,
   MAX_BODY_CHARS: 8 * 1024 * 1024,
   CACHE_CHUNK_CHARS: 20000,
-  MAX_CACHE_CHUNKS: 40,
+  MAX_CACHE_CHUNKS: 240,
   METHODS: [
+    'getDetailPage',
     'getDashboardBootstrap', 'getDashboardInitialPayload', 'getPeriodInitialPayload',
     'getTeamFilteredSummary', 'getTeamFilterOptions', 'getOpenFilteredSummary',
     'getOpenFilterOptions', 'getOpenLeadDetails', 'getOpenNearDeadlineDetails',
@@ -147,6 +148,9 @@ function dispatch_(body) {
     }
     case 'claim': return claim_(body);
     case 'complete': return complete_(body);
+    case 'snapshotHeartbeat': return snapshotHeartbeat_(body);
+    case 'publishSnapshot': return publishSnapshot_(body);
+    case 'publishDetails': return publishDetails_(body);
     case 'wait': return waitForResult_(body);
     default: throw new Error('Unknown relay action.');
   }
@@ -243,6 +247,57 @@ function claimNext_() {
 function claimedJob_(job) {
   return {id: job.id, route: job.route || 'dashboard', method: job.method, args: job.args};
 }
+// Proactively published, temporary report cache. No Drive files or new scopes.
+// Freshness requires a live worker which has checked the authoritative DB revision.
+function snapshotArgs_(args) {
+  function canonical(v) {return Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.keys(v).sort().reduce(function(o,k){o[k]=canonical(v[k]);return o;},{}):v;}
+  return JSON.stringify(canonical(args));
+}
+function snapshotManifest_() {try{return JSON.parse(cacheGet_('interactive-manifest')||'null');}catch(e){return null;}}
+function snapshotHeartbeat_(body) {
+  const m=snapshotManifest_();
+  if(m&&m.revision===body.revision&&cacheGetJson_(m.key)){
+    m.checkedAt=Date.now();cachePut_('interactive-manifest',JSON.stringify(m),600);return {needsPublish:false,needsDetails:!cacheGetJson_('interactive-details:'+m.revision)};
+  }
+  if(m){cacheRemoveJson_(m.key);cacheRemoveJson_('interactive-details:'+m.revision);}
+  cacheRemove_('interactive-manifest');return {needsPublish:true};
+}
+function publishSnapshot_(body) {
+  if(!/^[a-f0-9]{64}$/.test(String(body.revision||''))||body.value?.interactive?.revision!==body.revision||!body.value?.team?.rows||!body.value?.periods)throw new Error('Invalid interactive snapshot.');
+  const key='interactive-snapshot:'+body.revision+':'+Utilities.getUuid(),previous=snapshotManifest_();
+  if(!cachePutJson_(key,body.value,21600))throw new Error('Interactive snapshot does not fit the cache.');
+  const m={key:key,revision:body.revision,args:snapshotArgs_(body.args||[]),checkedAt:Date.now()};
+  if(!cachePut_('interactive-manifest',JSON.stringify(m),600))throw new Error('Snapshot manifest unavailable.');
+  if(previous&&previous.key!==key){cacheRemoveJson_(previous.key);if(previous.revision!==body.revision)cacheRemoveJson_('interactive-details:'+previous.revision);}
+  return {published:true,revision:body.revision};
+}
+function signedSnapshot(envelope) {
+  verifyEnvelope_(envelope);const body=envelope.body||{};
+  if(['snapshot','snapshotMeta','snapshotDetail'].indexOf(body.action)<0)throw new Error('Invalid snapshot action.');
+  const m=snapshotManifest_();
+  if(!m||Date.now()-m.checkedAt>90000)return {available:false};
+  if(body.action==='snapshotMeta')return {available:true,revision:m.revision,checkedAt:m.checkedAt};
+  if(body.action==='snapshotDetail'){
+    if(body.revision&&body.revision!==m.revision)return {available:true,value:{stale:true,rows:[],hasMore:false,revision:m.revision}};
+    if(Number(body.offset||0)!==0||Number(body.limit||100)!==100||['getPeriodKpiDetails','getLeadStatusKpiDetails'].indexOf(body.method)<0)return {available:false};
+    const args=body.args||[],filters=args[2]||{};
+    if(Object.keys(filters).some(k=>Array.isArray(filters[k])?filters[k].some(Boolean):!!filters[k]))return {available:false};
+    const pages=cacheGetJson_('interactive-details:'+m.revision),hit=pages&&pages[String(args[0])+'|'+String(args[1])];
+    return hit?{available:true,value:hit}:{available:false};
+  }
+  if(snapshotArgs_(body.args||[])!==m.args)return {available:false};
+  const value=cacheGetJson_(m.key);if(!value)return {available:false};
+  value.meta.generatedAt=new Date(m.checkedAt).toISOString();
+  for(const p of Object.keys(value.periods||{}))if(value.periods[p]?.meta)value.periods[p].meta.generatedAt=value.meta.generatedAt;
+  return {available:true,value:value};
+}
+function publishDetails_(body){
+ const m=snapshotManifest_();
+ if(!m||body.revision!==m.revision)throw new Error('Detail revision mismatch.');
+ if(!cachePutJson_('interactive-details:'+m.revision,body.pages,21600))throw new Error('Detail previews exceed cache capacity.');
+ return {published:true};
+}
+
 function pendingReadJobs_() {
   try { const value = JSON.parse(cacheGet_('relay-pending-reads') || '[]');return Array.isArray(value) ? value : []; }
   catch (err) { return []; }
@@ -370,15 +425,15 @@ function cachePut_(key, value, ttl) {
 function cacheRemove_(key) {
   try { CacheService.getScriptCache().remove(key); } catch (err) {}
 }
-function cachePutJson_(key, value) {
+function cachePutJson_(key, value, ttl) {
   const text = JSON.stringify(value), size = RELAY.CACHE_CHUNK_CHARS;
   const count = Math.ceil(text.length / size);
   if (!count || count > RELAY.MAX_CACHE_CHUNKS) return false;
   try {
     const cache = CacheService.getScriptCache(), chunks = {};
     for (let i = 0; i < count; i++) chunks[key + ':' + i] = text.slice(i * size, (i + 1) * size);
-    cache.putAll(chunks, 600);
-    cache.put(key + ':count', String(count), 600);
+    cache.putAll(chunks, ttl || 600);
+    cache.put(key + ':count', String(count), ttl || 600);
     return true;
   } catch (err) { return false; }
 }

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMeta, getTeamSummary, getTeamFilterOptions, getOpenFilterOptions, getOpenSummary, getOpenNearDeadlineDetails, getOpenExportRows } from '../../../lib/dashboard';
-import { getFilteredPeriodSummary, getActivityDetails, getPeriodKpiDetails, getDimensionDetails, getRepeatedCallDetails, getAdvisorTrend, getPeriodCampaignOptions, getLeadStatusKpiDetails, getPeriodExportData } from '../../../lib/period';
+import { getFilteredPeriodSummary, getActivityDetails, getPeriodKpiDetails, getDimensionDetails, getRepeatedCallDetails, getAdvisorTrend, getPeriodCampaignOptions, getLeadStatusKpiDetails, getPeriodExportChunk } from '../../../lib/period';
 import { getDashboardBootstrap } from '../../../lib/bootstrap';
 import { getOpenLeadDetails } from '../../../lib/open-detail';
 import { tursoSelect } from '../../../lib/turso';
 import { assertDashboardBridgeToken } from '../../../lib/bridge-auth';
 import { buildInitialPeriods } from '../../../lib/initial-periods';
+import {getInteractiveData,getDashboardRevision} from '../../../lib/report-facts';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -44,11 +45,24 @@ async function dashboardDiagnostics(){
 }
 
 async function exportChunk(tab:string,dataset:string,filters:any,offset:number,limit:number){
- if(tab==='open') return offset>0?[]:(await getOpenExportRows(filters||{})).slice(0,limit);
+ if(tab==='open') return getOpenExportRows(filters||{},offset,limit);
  if(!['daily','weekly','monthly','reportMonth'].includes(tab)) throw new Error('تب خروجی نامعتبر است.');
- const data:any=await getPeriodExportData(tab,filters||{});
- const rows=dataset&&Array.isArray(data[dataset])?data[dataset]:[];
- return rows.slice(offset,offset+limit);
+ return getPeriodExportChunk(tab,dataset,filters,offset,limit);
+}
+
+const detailMethods:Record<string,{arity:number,fn:Function}>={
+ getActivityDetails:{arity:4,fn:getActivityDetails},getPeriodKpiDetails:{arity:3,fn:getPeriodKpiDetails},getLeadStatusKpiDetails:{arity:3,fn:getLeadStatusKpiDetails},
+ getDimensionDetails:{arity:5,fn:getDimensionDetails},getRepeatedCallDetails:{arity:2,fn:getRepeatedCallDetails},getOpenLeadDetails:{arity:3,fn:getOpenLeadDetails},getOpenNearDeadlineDetails:{arity:3,fn:getOpenNearDeadlineDetails}
+};
+async function detailPage(method:string,args:any[],offset:any,limit:any,expectedRevision:string){
+ const definition=detailMethods[method];if(!definition||!Array.isArray(args)||args.length>definition.arity)throw new Error('Invalid detail request');
+ const revision=await getDashboardRevision();if(expectedRevision&&expectedRevision!==revision)return {stale:true,rows:[],hasMore:false,revision};
+ if(Number(offset)>200000)throw new Error('Detail page offset exceeds the supported range.');
+ const page={offset:Math.max(0,Math.floor(Number(offset))||0),limit:Math.max(1,Math.min(200,Math.floor(Number(limit))||100))};
+ const parameters=args.slice();while(parameters.length<definition.arity)parameters.push(undefined);
+ const rows=await definition.fn(...parameters,page);
+ if(revision!==await getDashboardRevision())return {stale:true,rows:[],hasMore:false,revision:await getDashboardRevision()};
+ return {rows:rows.slice(0,page.limit),hasMore:rows.length>page.limit,nextOffset:page.offset+page.limit,revision};
 }
 
 async function periodInitialPayload(period:string,filters:any={}){
@@ -59,6 +73,25 @@ async function periodInitialPayload(period:string,filters:any={}){
 }
 
 const handlers:Record<string,(args:any[])=>Promise<any>>={
+ getDetailWarmupPages:async()=>{
+  const revision=await getDashboardRevision(),pages:Record<string,any>={};
+  for(const period of ['daily','weekly','monthly','reportMonth']){
+   for(const type of ['closed','talked','oppLead','opp','calls','aml','t8','tickets','noStatus','noResponse']){
+    const rows=await (['noStatus','noResponse'].includes(type)?getLeadStatusKpiDetails(period,type,{}, {offset:0,limit:100}):getPeriodKpiDetails(period,type,{}, {offset:0,limit:100}));
+    pages[period+'|'+type]={rows:rows.slice(0,100),hasMore:rows.length>100,nextOffset:100,revision};
+   }
+  }
+  if(revision!==await getDashboardRevision())throw new Error('Detail data changed; retry.');
+  return {revision,pages};
+ },
+ getDetailPage: async([method,args,offset,limit,revision])=>detailPage(String(method),args,offset,limit,String(revision||'')),
+ getDashboardRevision: async()=>getDashboardRevision(),
+ getInteractiveDashboardPayload: async([openFilters])=>{
+  const before=await getDashboardRevision();
+  const [base,interactive]=await Promise.all([handlers.getDashboardInitialPayload([openFilters]),getInteractiveData()]);
+  if(before!==interactive.revision||before!==await getDashboardRevision())throw new Error('Snapshot changed; retry.');
+  return {...base,interactive};
+ },
  getDashboardBootstrap: async ()=>getDashboardBootstrap(),
  getDashboardInitialPayload: async ([openFilters])=>{
   const started=Date.now();

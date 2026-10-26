@@ -27,6 +27,16 @@ test('errors are not cached and bounded memory does not mix filters',async()=>{
  assert.equal(calls,5);
 });
 
+test('revision invalidation prevents old in-flight reads from repopulating a cleared cache',async()=>{
+ const releases=[];let calls=0;
+ const client=context.createReadRpcClient(()=>{calls++;return new Promise(resolve=>releases.push(resolve));});
+ const old=client.read('summary',[]);await Promise.resolve();client.clear();
+ const fresh=client.read('summary',[]);await Promise.resolve();
+ releases[0]({version:'old'});await old;assert.equal(client.peek('summary',[]),null);
+ const shared=client.read('summary',[]);await Promise.resolve();assert.equal(calls,2);
+ releases[1]({version:'new'});await Promise.all([fresh,shared]);assert.equal(client.peek('summary',[]).value.version,'new');
+});
+
 test('expired exact-filter results render immediately while fresh results arrive in the background',async()=>{
  let now=0,release,calls=0;const rendered=[];
  const client=context.createReadRpcClient(()=>{calls++;return new Promise(r=>release=r);},{now:()=>now});

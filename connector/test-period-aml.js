@@ -35,6 +35,28 @@ function load(){
  return {api:mod.exports,statements};
 }
 
+test('detail pages retain SQL filters, stable record ordering, one sentinel row and bounded offsets',async()=>{
+ const {api,statements}=load();
+ await api.getActivityDetails('monthly','aml','A',{campaign:['C']},{offset:100,limit:100});
+ assert.match(statements.at(-1).sql,/ORDER BY call_id NULLS LAST LIMIT 101 OFFSET 100/);
+ assert.deepEqual(Array.from(statements.at(-1).args),['A','C']);
+ await api.getLeadStatusKpiDetails('weekly','noResponse',{}, {offset:0,limit:100});
+ assert.match(statements.at(-1).sql,/ORDER BY lead_number NULLS LAST LIMIT 101 OFFSET 0/);
+ await api.getDimensionDetails('weekly','ticket','contactTopic','موضوع',{}, {offset:200,limit:100});
+ assert.match(statements.at(-1).sql,/ORDER BY queue_item_id NULLS LAST LIMIT 101 OFFSET 200/);
+ await api.getRepeatedCallDetails('weekly',{}, {offset:0,limit:100});
+ assert.match(statements.at(-1).sql,/ORDER BY c.call_id NULLS LAST LIMIT 101 OFFSET 0/);
+});
+
+test('each Excel chunk reads only its requested source with SQL-level pagination',async()=>{
+ const {api,statements}=load();
+ await api.getPeriodExportChunk('monthly','calls',{advisor:['A']},1000,1000);
+ assert.equal(statements.length,1);assert.match(statements[0].sql,/FROM monthly_calls/);
+ assert.match(statements[0].sql,/LIMIT \? OFFSET \?/);assert.deepEqual(Array.from(statements[0].args),['A',1000,1000]);
+ assert.match(statements[0].sql,/ORDER BY start_date DESC,call_id/);
+ await assert.rejects(api.getPeriodExportChunk('monthly','arbitrary',{},0,100),/Invalid|نامعتبر/);
+});
+
 test('AML survives summary, advisor averages, totals and every trend without forcing one attendance day',async()=>{
  const {api,statements}=load();
  const result=await api.getFilteredPeriodSummary('weekly',{});

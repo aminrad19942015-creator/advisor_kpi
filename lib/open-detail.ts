@@ -44,7 +44,7 @@ function applyOpenFilters(filters:any,args:any[]){
  return where;
 }
 
-export async function getOpenLeadDetails(field:string,value:string,filters:any={}){
+export async function getOpenLeadDetails(field:string,value:string,filters:any={},page?:{offset:number,limit:number}){
  if(typeof value==='string'&&value.startsWith('__OPEN_FILTERS_V2__')){
   try{
    const envelope=JSON.parse(value.slice('__OPEN_FILTERS_V2__'.length));
@@ -98,6 +98,6 @@ export async function getOpenLeadDetails(field:string,value:string,filters:any={
   FROM open_leads o
   INNER JOIN team_members t ON t.name=o.owner
   ${where}
-  ORDER BY o.age_days DESC
-  LIMIT 3000`).replaceAll('open_leads',openTable),args);
+  ORDER BY o.age_days DESC,o.owner,o.lead_number
+  LIMIT ${page?Math.max(1,Math.min(200,Math.floor(page.limit)||100))+1:3000} OFFSET ${page?Math.max(0,Math.min(200000,Math.floor(page.offset)||0)):0}`).replaceAll('open_leads',openTable),args);
 }

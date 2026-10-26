@@ -121,7 +121,44 @@ Release health requires:
 
 ## Current cutover status
 
-- Connector Scheduled Tasks are intentionally disabled.
-- Supabase remains untouched until the local migration is verified.
-- The local gateway routes and PostgreSQL adapter are prepared in this branch.
-- After the dashboard preflight passes through the stable HTTPS gateway, Connector endpoints can be switched and the tasks can be re-enabled deliberately.
+- Production UI remains the existing Google Apps Script web-app deployment.
+- Portable PostgreSQL remains on loopback; no public database port, tunnel or Sheets storage is required.
+- The user-level CRM Open Leads, Activity and Previous Month scheduled tasks are enabled. The obsolete Daily Sync task stays disabled to avoid duplicate runs.
+- The original gateway on 3010 continues serving CRM writes without interruption.
+
+## Interactive reads (monthly-report-v1)
+
+The user-level `Advisor KPI Fast Read Server` task serves an isolated build on
+127.0.0.1:3012 (guard 3013). Build it with `ADVISOR_READ_BUILD=1`; its output is
+`runtime/fast-read-build`, never the live connector's `.next` directory. The
+ignored `runtime/fast-read-ready.json` selects this reader for the Google worker.
+`ops/install-fast-read-server.ps1` registers the current-user, non-admin logon task
+after a successful isolated build. Verify it before selecting the reader; restart
+only the dashboard relay worker to pick up the ready marker.
+The reader also supports isolated slot B (`ADVISOR_READ_SLOT=b`, output
+`runtime/fast-read-build-b`, ready marker `buildSlot: "b"`) so subsequent builds
+never modify the files of the currently running reader.
+
+The worker checks the authoritative PostgreSQL revision every 30 seconds and
+proactively publishes a compressed report into the existing signed, same-owner
+Google library's temporary cache. The cache is not authoritative: entries are
+unusable after 90 seconds without a successful database heartbeat; cache loss
+falls back to the existing private queue. Revision changes invalidate browser
+reads and trigger a fresh report. Actual CRM last-sync timestamps are preserved.
+
+Reports contain only the fields needed for calculations; lead numbers are
+replaced with opaque join references. No customer names, phone numbers, national
+IDs or descriptions enter the interactive report. Unpacked facts remain only in
+page memory, not Sheets or browser persistent storage. All four periods, Open
+Leads and Team filters calculate in the browser using the existing business rules.
+`node ops/verify-report-engine.cjs` performs a read-only differential check against
+the SQL implementation (49 period/Open/Team filter cases).
+
+Drilldowns request 100 rows plus one SQL sentinel and offer **Show next 100**;
+revision checks prevent mixing pages across syncs. First pages of 40 common,
+unfiltered KPI drilldowns are prepared in the signed Google cache. Other details
+and later pages still use the private queue, with much smaller responses. Excel
+chunks now query only the requested dataset with SQL pagination. Large relay
+responses are gzip-compressed and oversized failures are completed explicitly
+instead of being re-claimed indefinitely. Admin writes remain ordered and gated
+by the existing password/token checks.

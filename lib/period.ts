@@ -12,6 +12,13 @@ const AML_CONDITION_SQL = `${AML_SUBJECT_NORM_SQL} IN (
  'بروز رسانی اطلاعات مشخصات و تکمیل فرم شناسایی'
 )`;
 const norm=(v:any)=>!v?[]:(Array.isArray(v)?v:[v]).filter(Boolean);
+export type DetailPage={offset:number,limit:number};
+function detailWindow(source:string,page:DetailPage|undefined,legacy:number,alias=''){
+ if(!page)return `LIMIT ${legacy}`;
+ const id=({lead:'lead_number',opp:'opportunity_id',call:'call_id',ticket:'queue_item_id'} as Record<string,string>)[source];
+ const offset=Math.max(0,Math.min(200000,Math.floor(Number(page.offset)||0))),limit=Math.max(1,Math.min(200,Math.floor(Number(page.limit)||100)));
+ return `ORDER BY ${alias}${id} NULLS LAST LIMIT ${limit+1} OFFSET ${offset}`;
+}
 const normPersonName=(v:any)=>String(v??'').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[\u200c\u200f\u202a-\u202e]/g,' ').replace(/\s+/g,' ').trim();
 const first=(rows:any[])=>rows?.[0]||{};
 const pairs=(rows:any[],k='label',c='count')=>(rows||[]).map(r=>[r[k]||'بدون مقدار',Number(r[c]||0)]);
@@ -208,7 +215,14 @@ export async function getPeriodExportData(period:string,filters:any={}){
  return {summary,leads,opportunities,calls,tickets};
 }
 
-export async function getLeadStatusKpiDetails(period:string,type:string,filters:any={}){
+export async function getPeriodExportChunk(period:string,dataset:string,filters:any,offset:number,limit:number){
+ const source=({leads:'lead',opportunities:'opp',calls:'call',tickets:'ticket'} as const)[dataset as 'leads'|'opportunities'|'calls'|'tickets'];
+ if(!source)throw new Error('Invalid export dataset');
+ const w=whereFor(filters||{},source,period),sort=({lead:'last_modified_date',opp:'created_date',call:'start_date',ticket:'closed_at'})[source],id=({lead:'lead_number',opp:'opportunity_id',call:'call_id',ticket:'queue_item_id'})[source];
+ return tursoSelect(`SELECT * FROM ${table(period,source)}${w.where} ORDER BY ${sort} DESC,${id} LIMIT ? OFFSET ?`,[...w.args,Math.max(1,Math.min(10000,Math.floor(limit)||1000)),Math.max(0,Math.min(200000,Math.floor(offset)||0))]);
+}
+
+export async function getLeadStatusKpiDetails(period:string,type:string,filters:any={},page?:DetailPage){
  const L=table(period,'lead');
  const lw=whereFor(filters,'lead',period);
  let condition='';
@@ -217,11 +231,10 @@ export async function getLeadStatusKpiDetails(period:string,type:string,filters:
  else throw new Error('نوع شاخص وضعیت لید نامعتبر است.');
  return tursoSelect(`SELECT *
   FROM ${L}${lw.where} AND ${condition}
-  ORDER BY last_modified_date DESC,owner
-  LIMIT 4000`,lw.args);
+  ${page?detailWindow('lead',page,4000):'ORDER BY last_modified_date DESC,owner LIMIT 4000'}`,lw.args);
 }
 
-export async function getActivityDetails(period:string,type:string,user:string,filters:any={}){
+export async function getActivityDetails(period:string,type:string,user:string,filters:any={},page?:DetailPage){
  let source:'lead'|'opp'|'call'|'ticket';
  if(type==='lead'||type==='talked')source='lead';
  else if(type==='opp')source='opp';
@@ -238,12 +251,12 @@ export async function getActivityDetails(period:string,type:string,user:string,f
  if(type==='aml')extra=' AND '+AML_CONDITION_SQL;
  if(type==='call')extra=' AND NOT ('+AML_CONDITION_SQL+')';
  if(type==='t8')extra=" AND UPPER(COALESCE(queue,''))='T8'";
- const rows=await tursoSelect(`SELECT * FROM ${table(period,source)}${w.where}${extra} LIMIT 4000`,w.args);
+ const rows=await tursoSelect(`SELECT * FROM ${table(period,source)}${w.where}${extra} ${detailWindow(source,page,4000)}`,w.args);
  if(source==='call')return rows.map((r:any)=>{const {phone_number,destination_number,...rest}=r;return {...rest,'شماره تماس مشتری':phone_number||destination_number||''}});
  return rows;
 }
 
-export async function getPeriodKpiDetails(period:string,type:string,filters:any={}){
+export async function getPeriodKpiDetails(period:string,type:string,filters:any={},page?:DetailPage){
  let source:'lead'|'opp'|'call'|'ticket';
  if(['closed','talked','noStatus','noResponse'].includes(type))source='lead';
  else if(type==='oppLead'||type==='opp')source='opp';
@@ -262,26 +275,26 @@ export async function getPeriodKpiDetails(period:string,type:string,filters:any=
  if(type==='aml')extra=' AND '+AML_CONDITION_SQL;
  if(type==='calls')extra=' AND NOT ('+AML_CONDITION_SQL+')';
  if(type==='t8')extra=" AND UPPER(COALESCE(queue,''))='T8'";
- const rows=await tursoSelect(`SELECT * FROM ${table(period,source)}${w.where}${extra} LIMIT 5000`,w.args);
+ const rows=await tursoSelect(`SELECT * FROM ${table(period,source)}${w.where}${extra} ${detailWindow(source,page,5000)}`,w.args);
  if(source==='call')return rows.map((r:any)=>{const {phone_number,destination_number,...rest}=r;return {...rest,'شماره تماس مشتری':phone_number||destination_number||''}});
  return rows;
 }
-export async function getDimensionDetails(period:string,source:'lead'|'opp'|'call'|'ticket',field:string,value:string,filters:any={}){
+export async function getDimensionDetails(period:string,source:'lead'|'opp'|'call'|'ticket',field:string,value:string,filters:any={},page?:DetailPage){
  const allowed:any={lead:{lastStatus:'last_status',customerRank:'customer_rank',source:'source',campaign:'campaign',sourceTicketContactTopic:'source_ticket_contact_topic'},opp:{registrationType:'registration_type',status:'status'},call:{subject:'subject'},ticket:{statusReason:'status_reason',contactTopic:'contact_topic'}};
  const col=allowed[source]?.[field];if(!col)throw new Error('فیلد Drill-down نامعتبر است.');
  const w=whereFor(filters||{},source,period);
  const expected=value==='بدون مقدار'?'':value;
  if(source==='ticket'&&field==='contactTopic'){
-   return tursoSelect(`SELECT * FROM ${table(period,source)}${w.where} AND COALESCE(NULLIF(contact_topic,''),NULLIF(main_subject,''),'')=? LIMIT 4000`,[...w.args,expected]);
+   return tursoSelect(`SELECT * FROM ${table(period,source)}${w.where} AND COALESCE(NULLIF(contact_topic,''),NULLIF(main_subject,''),'')=? ${detailWindow(source,page,4000)}`,[...w.args,expected]);
  }
- return tursoSelect(`SELECT * FROM ${table(period,source)}${w.where} AND COALESCE(${col},'')=? LIMIT 4000`,[...w.args,expected]);
+ return tursoSelect(`SELECT * FROM ${table(period,source)}${w.where} AND COALESCE(${col},'')=? ${detailWindow(source,page,4000)}`,[...w.args,expected]);
 }
-export async function getRepeatedCallDetails(period:string,filters:any={}){
+export async function getRepeatedCallDetails(period:string,filters:any={},page?:DetailPage){
  const t=table(period,'call'),w=whereFor(filters||{},'call',period);
  return tursoSelect(`SELECT c.* FROM ${t} c INNER JOIN (
    SELECT "user",lead_number FROM ${t}${w.where} AND NOT (${AML_CONDITION_SQL}) AND COALESCE(lead_number,'')<>''
    GROUP BY "user",lead_number HAVING COUNT(*)>1
  ) r ON r."user"=c."user" AND r.lead_number=c.lead_number
- WHERE NOT (${AML_CONDITION_SQL}) LIMIT 5000`,w.args);
+ WHERE NOT (${AML_CONDITION_SQL}) ${detailWindow('call',page,5000,'c.')}`,w.args);
 }
 export async function getAdvisorTrend(period:string,advisor:string){const member=await tursoSelect('SELECT name FROM team_members WHERE name=? LIMIT 1',[advisor]);if(!member.length)return [];const L=table(period,'lead'),O=table(period,'opp'),C=table(period,'call'),T=table(period,'ticket');const q:any=await namedBatch([{key:'leads',sql:`SELECT (last_modified_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",SUM(CASE WHEN ${TALKED_CONDITION_SQL} THEN 1 ELSE 0 END) talked FROM ${L} WHERE owner=? AND last_modified_date<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]},{key:'opps',sql:`SELECT (created_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) opp FROM ${O} WHERE creator=? AND registration_type='OPP' AND created_date<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]},{key:'calls',sql:`SELECT (start_date::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",SUM(CASE WHEN NOT (${AML_CONDITION_SQL}) THEN 1 ELSE 0 END) calls,SUM(CASE WHEN ${AML_CONDITION_SQL} THEN 1 ELSE 0 END) aml,SUM(CASE WHEN UPPER(COALESCE(queue,''))='T8' THEN 1 ELSE 0 END) t8 FROM ${C} WHERE "user"=? AND start_date<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]},{key:'tickets',sql:`SELECT (closed_at::timestamptz AT TIME ZONE 'Asia/Tehran')::date AS "day",COUNT(*) tickets FROM ${T} WHERE owner=? AND closed_at<>'' GROUP BY "day" ORDER BY "day"`,args:[advisor]}]);const m:any={};const touch=(d:string)=>m[d]||(m[d]={day:d,talked:0,opp:0,calls:0,aml:0,t8:0,tickets:0,total:0});for(const r of q.leads||[])touch(r.day).talked=Number(r.talked||0);for(const r of q.opps||[])touch(r.day).opp=Number(r.opp||0);for(const r of q.calls||[]){const x=touch(r.day);x.calls=Number(r.calls||0);x.aml=Number(r.aml||0);x.t8=Number(r.t8||0)}for(const r of q.tickets||[])touch(r.day).tickets=Number(r.tickets||0);return Object.keys(m).sort().map(d=>{const r=m[d];r.total=r.talked+r.opp+r.aml+r.t8+r.tickets;return r});}
