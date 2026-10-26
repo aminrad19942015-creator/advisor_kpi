@@ -53,6 +53,7 @@ jobs:
 
       - name: Parse GAS browser JavaScript
         run: |
+          node --test connector/test-excel-export.js
           sed '1d;$d' gas/Scripts.html > /tmp/advisor-gas-scripts.js
           node --check /tmp/advisor-gas-scripts.js
           sed '1d;$d' gas/RpcClient.html > /tmp/advisor-gas-rpc-client.js

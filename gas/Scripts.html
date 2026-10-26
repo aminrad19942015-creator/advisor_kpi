@@ -699,14 +699,9 @@ const EXPORT_FIELD_LABELS={
  modified_on:'زمان آخرین تغییر',modified_by:'آخرین ویرایش کننده',created_on:'زمان ثبت',created_by:'ثبت کننده'
 };
 
-let xlsxModulePromise=null;
 function loadXlsxModule(){
- if(globalThis.XLSX)return Promise.resolve(globalThis.XLSX);
- if(!xlsxModulePromise){
-   xlsxModulePromise=import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs')
-     .catch(err=>{xlsxModulePromise=null;throw err});
- }
- return xlsxModulePromise;
+ if(globalThis.XLSX?.utils&&typeof globalThis.XLSX.writeFile==='function')return Promise.resolve(globalThis.XLSX);
+ return Promise.reject(new Error('کتابخانهٔ داخلی اکسل بارگذاری نشده است؛ صفحه را تازه‌سازی کنید.'));
 }
 
 function gasExportChunk(tab,dataset,filters,offset,limit){

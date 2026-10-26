@@ -256,3 +256,14 @@ Required additional Script Property:
 - `ADMIN_PASSWORD`
 
 The browser never receives the dashboard bridge token. Admin writes pass through GAS to the local `/api/admin-rpc` route, and successful Admin writes increment `admin_revision` so dashboard caches are invalidated automatically.
+
+## Self-contained Excel exports
+
+`ExcelVendor.html` is the unmodified SheetJS CE 0.20.3 mini browser build from
+`https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js`.
+SHA-256: `0cb353f830d7288385492c83d277b058ddeac664ca51cf1393aa1fd3e2b70939`.
+Its Apache-2.0 license is preserved in `ExcelVendor.LICENSE.txt`.
+The dashboard includes it inline, so clicking Export does not fetch code from a CDN.
+The smaller mini build retains the existing XLSX writer without unused legacy spreadsheet formats.
+`node --test connector/test-excel-export.js` checks the pinned bytes and round-trips
+the actual Persian export helpers, including numeric AML columns and multiple data chunks.
