@@ -1,7 +1,9 @@
 'use strict';
 const assert=require('node:assert/strict'),test=require('node:test'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),crypto=require('node:crypto');
 const root=path.join(__dirname,'..');
-const vendor=fs.readFileSync(path.join(root,'gas/ExcelVendor.html'),'utf8');
+const vendorHtml=fs.readFileSync(path.join(root,'gas/ExcelVendor.html'),'utf8').replace(/\r\n/g,'\n');
+assert.ok(vendorHtml.startsWith('<script>\n')&&vendorHtml.endsWith('\n</script>\n'));
+const vendor=vendorHtml.slice('<script>\n'.length,-'\n</script>\n'.length);
 const scripts=fs.readFileSync(path.join(root,'gas/Scripts.html'),'utf8');
 function browser(){
  const c=vm.createContext({console,Date,Intl,Uint8Array,ArrayBuffer,setTimeout,clearTimeout});
