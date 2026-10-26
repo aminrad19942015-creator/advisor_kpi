@@ -579,6 +579,7 @@ function renderTeam(){
 }
 
 function renderOpen(){
+ const retainedDetail=$('openDetail')?.style.display==='block'?$('openDetail'):null;
  const s=state.data.open||{},k=s.kpis||{},d=s.dimensions||{};
  $('openPage').innerHTML=`
   ${reportBadge('تاریخ امروز',new Date().toLocaleDateString('fa-IR'),state.data?.meta?.crmShadowLastSyncAt)}
@@ -603,6 +604,7 @@ function renderOpen(){
  document.querySelectorAll('#openPage [data-f]').forEach(panel=>bindBars(panel,v=>loadOpenDetail(panel.dataset.f,v)));
  document.querySelectorAll('[data-open-owner]').forEach(el=>el.onclick=()=>loadOpenDetail('owner',el.dataset.openOwner));
  document.querySelectorAll('#openPage [data-deadline-type]').forEach(el=>{el.onclick=()=>loadOpenDeadlineDetail(el.dataset.deadlineType,el.dataset.deadlineOwner||'');});
+ if(retainedDetail&&$('openDetail'))$('openDetail').replaceWith(retainedDetail);
  bindOpenFilters();
  makeTableSortable($('openPage'));
 }
@@ -668,6 +670,7 @@ function activityCards(k,period){
 }
 
 function renderPeriod(period,pageId,title){
+ const openDetails=[period+'Detail',period+'DimensionDetail'].map(id=>$(id)).filter(el=>el&&el.style.display==='block');
  const s=state.data[period]||{},k=s.kpis||{},d=s.dimensions||{};
  $(pageId).innerHTML=`
    ${reportBadge(period==='daily'?'تاریخ گزارش':period==='reportMonth'?'ماه گزارش':'بازه گزارش',period==='reportMonth'?(state.data?.meta?.crmMonthReportLabel||rangeText(s)):rangeText(s),period==='reportMonth'?state.data?.meta?.crmMonthReportLastSyncAt:state.data?.meta?.crmActivityLastSyncAt)}
@@ -680,6 +683,7 @@ function renderPeriod(period,pageId,title){
   <div class="grid2" id="${period}Dims2"><div class="panel" data-source="opp" data-field="registrationType"><div class="panel-head"><div><h3>فرصت‌ها: LEAD در برابر OPP</h3><p>نوع ایجاد فرصت</p></div></div>${bars(d.oppKind)}</div><div class="panel" data-source="opp" data-field="status"><div class="panel-head"><div><h3>وضعیت فرصت‌ها</h3><p>Open / Won / Lost و سایر وضعیت‌ها</p></div></div>${bars(d.oppStatus)}</div><div class="panel" data-source="ticket" data-field="statusReason"><div class="panel-head"><div><h3>علت وضعیت تیکت</h3><p>خروجی تیکت‌ها</p></div></div>${bars(d.ticketState)}</div><div class="panel" data-source="ticket" data-field="contactTopic"><div class="panel-head"><div><h3>موضوع تیکت</h3><p>موضوعات پرتکرار</p></div></div>${bars(d.ticketSubject)}</div><div class="panel" data-source="call" data-field="subject"><div class="panel-head"><div><h3>موضوع تماس</h3><p>موضوع تماس‌های ثبت‌شده</p></div></div>${bars(d.callSubject)}</div><div class="panel" data-source="lead" data-field="sourceTicketContactTopic"><div class="panel-head"><div><h3>موضوع تماس (تیکت منشأ)</h3><p>موضوع تیکت منشأ ثبت‌شده روی لیدها</p></div></div>${bars(d.leadTicketTopic)}</div></div>
   <div class="panel dimension-detail-panel" id="${period}DimensionDetail" style="display:none"><div class="panel-head"><div><h3>جزئیات شاخص</h3><p id="${period}DimensionDetailSub">—</p></div><button class="clear" onclick="$('${period}DimensionDetail').style.display='none'">بستن</button></div><div id="${period}DimensionDetailBody"></div></div>
   `;
+ for(const detail of openDetails){const placeholder=$(detail.id);if(placeholder)placeholder.replaceWith(detail);}
  document.querySelectorAll(`#${pageId} .activity-num`).forEach(el=>el.onclick=()=>loadActivityDetail(el.dataset.p,el.dataset.t,el.dataset.u));
  document.querySelectorAll(`#${pageId} [data-status-kpi]`).forEach(el=>el.onclick=()=>loadLeadStatusKpiDetail(el.dataset.period,el.dataset.statusKpi));
  document.querySelectorAll(`#${pageId} [data-period-kpi]`).forEach(el=>el.onclick=()=>loadPeriodKpiDetail(el.dataset.period,el.dataset.periodKpi,el.dataset.kpiTitle||'جزئیات شاخص'));
