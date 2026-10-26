@@ -186,6 +186,10 @@ html,body,button,input,select,textarea{font-family:'Vazirmatn',sans-serif!import
 @media(max-width:620px){.topbar-actions{width:100%;justify-content:space-between}.export-btn{flex:1}}
 
 
+/* Keep filters usable while a slow read is in flight; obsolete replies are ignored. */
+.filter-loading{pointer-events:auto}
+.filter-loading .kpis,.filter-loading .table-wrap,.filter-loading .chart-stage{pointer-events:none}
+.read-refresh-note{margin:0 0 12px;color:#ffe6a4}
 .data-health-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding:10px 13px;border-radius:11px;border:1px solid transparent;font-size:11.5px;line-height:1.8}
 .data-health-banner[hidden]{display:none!important}
 .data-health-banner.warning{background:#342b16;border-color:#7d6423;color:#ffe6a4}

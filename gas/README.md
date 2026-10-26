@@ -259,6 +259,19 @@ The browser never receives the dashboard bridge token. Admin writes pass through
 
 ## Self-contained Excel exports
 
+## Interactive read reuse
+
+Summary filters and drilldowns share an exact-argument, page-memory-only read cache.
+Fresh results are reused for 20 seconds; results up to five minutes old may render
+immediately with an explicit refresh label while a fresh read runs in the background.
+Refresh failures remain labelled, and changing filters invalidates old detail requests.
+The cache is bounded to 32 entries / approximately 8 MB of serialized UTF-16 data;
+oversized results are not retained. No new localStorage or Google Sheets storage is used.
+Prepared tabs use their original generation time for their five-minute stale ceiling.
+This does not eliminate Google transport latency for a never-before-requested filter or detail.
+
+## Excel vendor provenance
+
 `ExcelVendor.html` wraps the unmodified SheetJS CE 0.20.3 mini browser build in a script tag from
 `https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js`.
 SHA-256: `0cb353f830d7288385492c83d277b058ddeac664ca51cf1393aa1fd3e2b70939`.

@@ -26,6 +26,34 @@ test('errors are not cached and bounded memory does not mix filters',async()=>{
  assert.equal(await client.read('x',[1]),1);await client.read('x',[2]);await client.read('x',[3]);await client.read('x',[1]);
  assert.equal(calls,5);
 });
+
+test('expired exact-filter results render immediately while fresh results arrive in the background',async()=>{
+ let now=0,release,calls=0;const rendered=[];
+ const client=context.createReadRpcClient(()=>{calls++;return new Promise(r=>release=r);},{now:()=>now});
+ client.remember('details',['weekly','aml',{advisor:['A']}],[{n:7}]);now=21000;
+ const run=context.createLatestReadRunner(client);
+ const work=run('detail','details',['weekly','aml',{advisor:['A']}],(rows,info)=>rendered.push([rows[0].n,info.refreshing]),assert.fail,()=>{});
+ assert.deepEqual(rendered,[[7,true]]);await Promise.resolve();assert.equal(calls,1);
+ assert.equal(client.peek('details',['weekly','aml',{advisor:['B']}]),null);
+ release([{n:8}]);await work;assert.deepEqual(rendered,[[7,true],[8,false]]);
+ now=321001;assert.equal(client.peek('details',['weekly','aml',{advisor:['A']}]),null);
+});
+
+test('failed refresh explicitly labels old results; memory budget prevents caching huge drilldowns',async()=>{
+ let now=0;const statuses=[];
+ const client=context.createReadRpcClient(async()=>{throw Error('offline');},{now:()=>now,maxBytes:100});
+ client.remember('detail',[],[{n:1}]);now=21000;
+ await context.createLatestReadRunner(client)('x','detail',[],(r,info)=>statuses.push(info),()=>{},()=>{});
+ assert.equal(statuses[0].refreshing,true);assert.equal(statuses[1].error,true);
+ client.remember('huge',[],{text:'x'.repeat(100)});assert.equal(client.peek('huge',[]),null);
+});
+
+test('changing filters invalidates an in-flight drilldown even without starting another detail',async()=>{
+ let release;const rendered=[];
+ const run=context.createLatestReadRunner({read:()=>new Promise(r=>release=r)});
+ const work=run('detail','details',[],x=>rendered.push(x),assert.fail,()=>{});
+ run.invalidate('detail');release(['obsolete']);await work;assert.deepEqual(rendered,[]);
+});
 test('late responses cannot overwrite the latest selected filters or clear its loading state',async()=>{
  const finish=new Map(),rendered=[],done=[];
  const run=context.createLatestReadRunner({read:(m,[key])=>new Promise(resolve=>finish.set(key,resolve))});

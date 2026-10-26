@@ -1,22 +1,29 @@
 <script>
 // Short-lived, page-memory-only read cache. No credentials or new persistent storage.
 function createReadRpcClient(send, options={}) {
- const ttlMs=options.ttlMs??20000,maxEntries=options.maxEntries??32,now=options.now||Date.now;
+ const ttlMs=options.ttlMs??20000,maxAgeMs=options.maxAgeMs??300000,maxEntries=options.maxEntries??32,maxBytes=options.maxBytes??8000000,now=options.now||Date.now;
  const values=new Map(),pending=new Map();
  const clone=value=>JSON.parse(JSON.stringify(value));
  const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'
   ?Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonical(value[k])])):value;
  const key=(method,args)=>method+':'+JSON.stringify(canonical(args));
  function remember(method,args,value){
-  const k=key(method,args);values.delete(k);values.set(k,{expires:now()+ttlMs,value:clone(value)});
-  while(values.size>maxEntries)values.delete(values.keys().next().value);
+  const k=key(method,args),raw=JSON.stringify(value),savedAt=now();values.delete(k);
+  if(raw.length*2>maxBytes)return;
+  values.set(k,{expires:savedAt+ttlMs,savedAt,value:JSON.parse(raw),bytes:raw.length*2});
+  while(values.size>maxEntries||Array.from(values.values()).reduce((n,x)=>n+x.bytes,0)>maxBytes)values.delete(values.keys().next().value);
  }
  return {
   remember,
+  peek(method,args){
+   const k=key(method,args),entry=values.get(k);
+   if(!entry)return null;
+   if(now()-entry.savedAt>=maxAgeMs){values.delete(k);return null;}
+   return {value:clone(entry.value),savedAt:entry.savedAt,refreshing:entry.expires<=now()};
+  },
   read(method,args){
    const copied=clone(args),k=key(method,copied),cached=values.get(k);
    if(cached&&cached.expires>now())return Promise.resolve(clone(cached.value));
-   values.delete(k);
    if(!pending.has(k)){
     const request=Promise.resolve().then(()=>send(method,copied)).then(value=>{
      remember(method,copied,value);return value;
@@ -30,13 +37,17 @@ function createReadRpcClient(send, options={}) {
 // Only the latest filter response may update a page; older requests may finish later.
 function createLatestReadRunner(client){
  const versions=new Map();
- return (scope,method,args,onSuccess,onError,onDone)=>{
+ const run=(scope,method,args,onSuccess,onError,onDone)=>{
   const version=(versions.get(scope)||0)+1;versions.set(scope,version);
+  const cached=client.peek?.(method,args);
+  if(cached)onSuccess(cached.value,cached);
   return client.read(method,args).then(value=>{
-   if(versions.get(scope)===version)onSuccess(value);
-  },error=>{if(versions.get(scope)===version)onError(error);})
+   if(versions.get(scope)===version&&(!cached||cached.refreshing))onSuccess(value,{refreshing:false});
+  },error=>{if(versions.get(scope)===version){if(cached)onSuccess(cached.value,{...cached,refreshing:false,error:true});onError(error);}})
   .finally(()=>{if(versions.get(scope)===version)onDone();});
  };
+ run.invalidate=scope=>versions.set(scope,(versions.get(scope)||0)+1);
+ return run;
 }
 
 // Prefetched summaries are usable only for the matching, unfiltered tab and
@@ -55,7 +66,13 @@ function createInitialPeriodStore(options={}){
   read(period,filters={}){
    if(Object.values(filters).some(v=>Array.isArray(v)?v.some(Boolean):!!v))return null;
    const entry=prepared.get(period);
-   if(!entry||entry.expires<=now()){prepared.delete(period);return null;}
+   if(!entry||entry.expires<=now())return null;
+   return JSON.parse(JSON.stringify(entry.payload));
+  },
+  readStale(period,filters={}){
+   if(Object.values(filters).some(v=>Array.isArray(v)?v.some(Boolean):!!v))return null;
+   const entry=prepared.get(period);
+   if(!entry||now()-Date.parse(entry.payload.meta.generatedAt)>=300000)return null;
    return JSON.parse(JSON.stringify(entry.payload));
   }
  };

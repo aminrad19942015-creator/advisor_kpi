@@ -6,6 +6,7 @@ const readRpc=createReadRpcClient((method,args)=>new Promise((resolve,reject)=>{
 }));
 const latestRead=createLatestReadRunner(readRpc);
 const initialPeriods=createInitialPeriodStore();
+const periodReadAt={};
 const fa=v=>Number(v||0).toLocaleString('fa-IR');
 const safe=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;");
 const fmt=v=>{const d=new Date(v);return isNaN(d)?'—':d.toLocaleDateString('fa-IR',{year:'numeric',month:'2-digit',day:'2-digit'})};
@@ -394,6 +395,14 @@ document.addEventListener('click',()=>{
 function setPageLoading(pageId,on){
   const el=$(pageId);if(el)el.classList.toggle('filter-loading',on);
 }
+function pageReadNotice(pageId,info){
+ const page=$(pageId);if(!page)return;
+ let note=page.querySelector('.read-refresh-note');
+ if(!info?.refreshing&&!info?.error){if(note)note.remove();return;}
+ if(!note){note=document.createElement('div');note.className='read-refresh-note data-note';note.setAttribute('role','status');page.prepend(note);}
+ note.textContent='نمایش نتیجهٔ همین فیلتر از '+new Date(info.savedAt).toLocaleTimeString('fa-IR')+(info.error?'؛ دریافت نسخهٔ تازه ناموفق بود.':'؛ در حال دریافت نسخهٔ تازه…');
+ setPageLoading(pageId,false);
+}
 function teamFiltersHtml(){
   const o=filterOptions.team||{},f=filterState.team;
   return `<div class="filters">
@@ -462,7 +471,7 @@ let teamDebounce;
 function debouncedApplyTeam(){clearTimeout(teamDebounce);teamDebounce=setTimeout(applyTeamFilters,350)}
 function applyTeamFilters(){
   setPageLoading('teamPage',true);
-  latestRead('team','getTeamFilteredSummary',[filterState.team],s=>{state.data.team=s;renderTeam()},
+  latestRead('team','getTeamFilteredSummary',[filterState.team],(s,info)=>{state.data.team=s;renderTeam();pageReadNotice('teamPage',info)},
     e=>toast('خطا در اعمال فیلتر: '+(e?.message||e)),()=>setPageLoading('teamPage',false));
 }
 let openDebounce;
@@ -487,8 +496,9 @@ function bindOpenFilters(){
   },0);
 }
 function applyOpenFilters(){
+  latestRead.invalidate('openDetail');if($('openDetail'))$('openDetail').style.display='none';
   setPageLoading('openPage',true);
-  latestRead('open','getOpenFilteredSummary',[filterState.open],s=>{state.data.open=s;renderOpen()},
+  latestRead('open','getOpenFilteredSummary',[filterState.open],(s,info)=>{state.data.open=s;renderOpen();pageReadNotice('openPage',info)},
     e=>toast('خطا در اعمال فیلتر: '+(e?.message||e)),()=>setPageLoading('openPage',false));
 }
 function periodTitle(period){
@@ -512,9 +522,11 @@ function bindPeriodFilters(period){
 }
 function applyPeriodFilters(period){
   const pageId=period+'Page';
+  for(const scope of [period+'Detail',period+'DimensionDetail']){latestRead.invalidate(scope);const box=$(scope);if(box)box.style.display='none';}
   setPageLoading(pageId,true);
-  latestRead(period,'getFilteredPeriodSummary',[period,filterState[period]],s=>{
-    state.data[period]=s;renderPeriod(period,pageId,periodTitle(period));bindChartHover($(pageId));
+  latestRead(period,'getFilteredPeriodSummary',[period,filterState[period]],(s,info)=>{
+    state.data[period]=s;renderPeriod(period,pageId,periodTitle(period));bindChartHover($(pageId));pageReadNotice(pageId,info);
+    if(!info?.refreshing&&!info?.error)periodReadAt[period]=Date.now();
   },e=>toast('خطا در اعمال فیلتر: '+(e?.message||e||'خطای نامشخص')),()=>setPageLoading(pageId,false));
 }
 
@@ -596,6 +608,15 @@ function renderOpen(){
 }
 
 
+function cachedOpenDetailRun(){
+ let success=()=>{},failure=()=>{};
+ const runner={withSuccessHandler(fn){success=fn;return runner;},withFailureHandler(fn){failure=fn;return runner;}};
+ for(const method of ['getOpenLeadDetails','getOpenNearDeadlineDetails'])runner[method]=(...args)=>latestRead('openDetail',method,args,(rows,info)=>{
+  success(rows);
+  if(info?.refreshing||info?.error)$('openDetailSub').textContent+=info.error?' — نسخهٔ قبلی؛ بروزرسانی ناموفق':' — نسخهٔ قبلی؛ در حال بروزرسانی…';
+ },error=>{if(!readRpc.peek(method,args))failure(error);else toast('دریافت نسخهٔ تازه ناموفق بود.');},()=>{});
+ return runner;
+}
 function loadOpenDeadlineDetail(leadType,owner){
  const box=$('openDetail');
  box.style.display='block';
@@ -604,7 +625,7 @@ function loadOpenDeadlineDetail(leadType,owner){
  $('openDetailSub').textContent='در حال دریافت '+title+'...';
  $('openDetailBody').innerHTML='<div class="empty">در حال خواندن جزئیات...</div>';
 
- google.script.run
+ cachedOpenDetailRun()
   .withFailureHandler(e=>{
     $('openDetailBody').innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>';
   })
@@ -619,7 +640,7 @@ function loadOpenDeadlineDetail(leadType,owner){
 
 function loadOpenDetail(field,value){
  const box=$('openDetail');box.style.display='block';$('openDetailSub').textContent='در حال دریافت...';$('openDetailBody').innerHTML='<div class="empty">در حال خواندن جزئیات...</div>';
- google.script.run.withFailureHandler(e=>{$('openDetailBody').innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>'}).withSuccessHandler(rows=>{
+ cachedOpenDetailRun().withFailureHandler(e=>{$('openDetailBody').innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>'}).withSuccessHandler(rows=>{
   $('openDetailSub').textContent=fa(rows.length)+' رکورد';
   $('openDetailBody').innerHTML=`<div class="table-wrap activity-detail-wrap"><table class="table"><thead><tr><th>مشاور</th><th>شماره سرنخ</th><th>نام مشتری</th><th>تاریخ ثبت</th><th>سن</th><th>نوع</th><th>رتبه</th><th>کمپین</th><th>منشا</th><th>نرم‌افزار منشا</th><th>آخرین وضعیت</th><th>دلیل تماس بعدی</th><th>واحد تجاری</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${safe(r.owner||'—')}</td><td>${safe(r.leadNumber||'—')}</td><td>${safe(r.customerName||'—')}</td><td>${fmt(r.createdDate)}</td><td>${fa(r.ageDays)}</td><td>${safe(r.leadType||'—')}</td><td>${safe(r.customerRank||'—')}</td><td>${safe(r.campaign||'—')}</td><td>${safe(r.source||'—')}</td><td>${safe(r.sourceSoftware||'—')}</td><td>${safe(r.lastStatus||'—')}</td><td>${safe(r.nextCallReason||'بدون تسک')}</td><td>${safe(r.businessUnit||'—')}</td></tr>`).join('')}</tbody></table></div>`;
   makeTableSortable(box);box.scrollIntoView({behavior:'smooth',block:'start'});
@@ -850,40 +871,21 @@ async function exportDashboardTab(tab){
    if(btn){btn.disabled=false;btn.textContent=original;}
  }
 }
-function loadActivityDetail(period,type,user){const box=$(`${period}Detail`);box.style.display='block';$(`${period}DetailSub`).textContent='در حال دریافت...';$(`${period}DetailBody`).innerHTML='<div class="empty">در حال دریافت...</div>';google.script.run.withFailureHandler(e=>{$(`${period}DetailBody`).innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>'}).withSuccessHandler(rows=>{$(`${period}DetailSub`).textContent=fa(rows.length)+' رکورد — '+user;$(`${period}DetailBody`).innerHTML=rowsTable(rows);makeTableSortable(box);box.scrollIntoView({behavior:'smooth',block:'start'})}).getActivityDetails(period,type,user,filterState[period]||{})}
-function loadPeriodKpiDetail(period,type,title){
- const box=$(`${period}Detail`);
- box.style.display='block';
- $(`${period}DetailSub`).textContent='در حال دریافت '+title+'...';
- $(`${period}DetailBody`).innerHTML='<div class="empty">در حال دریافت...</div>';
- google.script.run
-  .withFailureHandler(e=>{$(`${period}DetailBody`).innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>'})
-  .withSuccessHandler(rows=>{
-   $(`${period}DetailSub`).textContent=title+' — '+fa(rows.length)+' رکورد';
-   $(`${period}DetailBody`).innerHTML=rowsTable(rows);
-   makeTableSortable(box);
-   box.scrollIntoView({behavior:'smooth',block:'start'});
-  })
-  .getPeriodKpiDetails(period,type,filterState[period]||{});
+function showCachedDetail(id,title,method,args){
+ const box=$(id);box.style.display='block';
+ $(id+'Sub').textContent='در حال دریافت '+title+'…';
+ $(id+'Body').innerHTML='<div class="empty">در حال دریافت…</div>';
+ box.scrollIntoView({behavior:'smooth',block:'start'});
+ latestRead(id,method,args,(rows,info)=>{
+  $(id+'Sub').textContent=title+' — '+fa(rows.length)+' رکورد'+(info?.error?' — نسخهٔ قبلی؛ بروزرسانی ناموفق':info?.refreshing?' — نسخهٔ قبلی؛ در حال بروزرسانی…':'');
+  $(id+'Body').innerHTML=rowsTable(rows);makeTableSortable(box);
+ },e=>{if(!readRpc.peek(method,args))$(id+'Body').innerHTML='<div class="data-note">'+safe(e?.message||e)+'</div>';else toast('بروزرسانی جزئیات ناموفق بود؛ نتیجهٔ قبلی نمایش داده می‌شود.');},()=>{});
 }
-function loadLeadStatusKpiDetail(period,type){
- const box=$(`${period}Detail`);
- box.style.display='block';
- const title=type==='noStatus'?'عدم تعیین وضعیت در زمان مقرر':'عدم پاسخ (۲ بار)';
- $(`${period}DetailSub`).textContent='در حال دریافت '+title+'...';
- $(`${period}DetailBody`).innerHTML='<div class="empty">در حال دریافت...</div>';
- google.script.run
-  .withFailureHandler(e=>{$(`${period}DetailBody`).innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>'})
-  .withSuccessHandler(rows=>{
-   $(`${period}DetailSub`).textContent=title+' — '+fa(rows.length)+' رکورد';
-   $(`${period}DetailBody`).innerHTML=rowsTable(rows);
-   makeTableSortable(box);
-   box.scrollIntoView({behavior:'smooth',block:'start'});
-  })
-  .getLeadStatusKpiDetails(period,type,filterState[period]||{});
-}
-function loadDimension(period,source,field,value){const box=$(`${period}DimensionDetail`);box.style.display='block';$(`${period}DimensionDetailSub`).textContent='در حال دریافت...';$(`${period}DimensionDetailBody`).innerHTML='<div class="empty">در حال دریافت...</div>';google.script.run.withFailureHandler(e=>{$(`${period}DimensionDetailBody`).innerHTML='<div class="data-note">'+safe(e.message||e)+'</div>'}).withSuccessHandler(rows=>{$(`${period}DimensionDetailSub`).textContent=`${field}: ${value} — ${fa(rows.length)} رکورد`;$(`${period}DimensionDetailBody`).innerHTML=rowsTable(rows);makeTableSortable(box);box.scrollIntoView({behavior:'smooth',block:'start'})}).getDimensionDetails(period,source,field,value,filterState[period]||{})}
-function loadRepeated(period){const box=$(`${period}DimensionDetail`);box.style.display='block';$(`${period}DimensionDetailSub`).textContent='تماس‌های تکراری';$(`${period}DimensionDetailBody`).innerHTML='<div class="empty">در حال دریافت...</div>';google.script.run.withSuccessHandler(rows=>{$(`${period}DimensionDetailSub`).textContent='تماس‌های تکراری — '+fa(rows.length)+' رکورد';$(`${period}DimensionDetailBody`).innerHTML=rowsTable(rows);makeTableSortable(box)}).getRepeatedCallDetails(period,filterState[period]||{})}
+function loadActivityDetail(period,type,user){showCachedDetail(period+'Detail',user,'getActivityDetails',[period,type,user,filterState[period]||{}]);}
+function loadPeriodKpiDetail(period,type,title){showCachedDetail(period+'Detail',title,'getPeriodKpiDetails',[period,type,filterState[period]||{}]);}
+function loadLeadStatusKpiDetail(period,type){showCachedDetail(period+'Detail',type==='noStatus'?'عدم تعیین وضعیت در زمان مقرر':'عدم پاسخ (۲ بار)','getLeadStatusKpiDetails',[period,type,filterState[period]||{}]);}
+function loadDimension(period,source,field,value){showCachedDetail(period+'DimensionDetail',field+': '+value,'getDimensionDetails',[period,source,field,value,filterState[period]||{}]);}
+function loadRepeated(period){showCachedDetail(period+'DimensionDetail','تماس‌های تکراری','getRepeatedCallDetails',[period,filterState[period]||{}]);}
 function loadAdvisorTrend(period,advisor){
  const el=$(`${period}AdvisorChart`);
  if(!el)return;
@@ -907,11 +909,12 @@ function renderInitialPeriod(period,payload,source,requestedFilters){
  state.data[period]=payload.summary||{};
  if(payload.meta)state.data.meta={...(state.data.meta||{}),...payload.meta};
  periodInitialLoaded[period]=true;
+ if(source!=='cached'&&source!=='snapshot')periodReadAt[period]=Date.now();
  renderPeriod(period,pageId,periodTitle(period));
  $(pageId).dataset.initialSource=source;
  bindChartHover($(pageId));
  setPageLoading(pageId,false);
- if(source!=='snapshot'){
+ if(source!=='snapshot'&&source!=='cached'){
   snapshotWrite('period:'+period,payload);
   readRpc.remember('getFilteredPeriodSummary',[period,requestedFilters],payload.summary);
   updateFreshnessBanner(state.data?.meta||{});
@@ -919,15 +922,20 @@ function renderInitialPeriod(period,payload,source,requestedFilters){
 }
 function loadInitialPeriod(period){
  const pageId=period+'Page';
- if(periodInitialLoaded[period]||periodInitialPending[period])return;
+ if(periodInitialPending[period])return;
+ if(periodInitialLoaded[period]){if(Date.now()-(periodReadAt[period]||0)>60000)applyPeriodFilters(period);return;}
  const requestedFilters=JSON.parse(JSON.stringify(filterState[period]));
  const prepared=initialPeriods.read(period,requestedFilters);
  if(prepared){renderInitialPeriod(period,prepared,'preloaded',requestedFilters);return;}
+ const stale=initialPeriods.readStale(period,requestedFilters);
+ if(stale){renderInitialPeriod(period,stale,'cached',requestedFilters);pageReadNotice(pageId,{refreshing:true,savedAt:Date.parse(stale.meta.generatedAt)});}
  periodInitialPending[period]=true;
- setPageLoading(pageId,true);
+ setPageLoading(pageId,!stale);
  google.script.run
   .withFailureHandler(e=>{
     periodInitialPending[period]=false;
+    if(JSON.stringify(filterState[period])!==JSON.stringify(requestedFilters))return;
+    if(stale){pageReadNotice(pageId,{error:true,savedAt:Date.parse(stale.meta.generatedAt)});return;}
     const snap=snapshotRead('period:'+period);
     if(snap&&validPeriodPayload(snap.payload)){
       renderInitialPeriod(period,snap.payload,'snapshot',requestedFilters);
@@ -939,6 +947,7 @@ function loadInitialPeriod(period){
   })
   .withSuccessHandler(payload=>{
     periodInitialPending[period]=false;
+    if(JSON.stringify(filterState[period])!==JSON.stringify(requestedFilters))return;
     let source='direct';
     if(!validPeriodPayload(payload)){
       const snap=snapshotRead('period:'+period);
@@ -953,6 +962,7 @@ function loadInitialPeriod(period){
       }
     }
     renderInitialPeriod(period,payload,source,requestedFilters);
+    pageReadNotice(pageId,null);
   })
   .getPeriodInitialPayload(period,requestedFilters);
 }

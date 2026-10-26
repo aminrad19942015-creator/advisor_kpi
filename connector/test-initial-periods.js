@@ -52,3 +52,11 @@ test('prepared summary age is capped from server generation; stale or invalid ta
  assert.ok(store.read('daily',{}));now+=1001;
  assert.equal(store.read('daily',{}),null);assert.equal(store.read('weekly',{}),null);assert.equal(store.read('reportMonth',{}),null);
 });
+
+test('expired prepared tabs remain available for explicitly labelled background refresh, but never beyond five minutes or across filters',()=>{
+ let now=Date.now();const store=browser.createInitialPeriodStore({now:()=>now});
+ store.seed({weekly:payload('weekly',new Date(now).toISOString())});now+=61000;
+ assert.equal(store.read('weekly',{}),null);assert.ok(store.readStale('weekly',{}));
+ assert.equal(store.readStale('weekly',{campaign:['other']}),null);
+ now+=240000;assert.equal(store.readStale('weekly',{}),null);
+});
