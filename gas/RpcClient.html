@@ -38,4 +38,26 @@ function createLatestReadRunner(client){
   .finally(()=>{if(versions.get(scope)===version)onDone();});
  };
 }
+
+// Prefetched summaries are usable only for the matching, unfiltered tab and
+// for at most one minute from server generation (not from browser receipt).
+function createInitialPeriodStore(options={}){
+ const now=options.now||Date.now,maxAgeMs=options.maxAgeMs??60000,prepared=new Map();
+ const periods=['daily','weekly','monthly','reportMonth'];
+ return {
+  seed(payloads){
+   for(const period of periods){
+    const payload=payloads?.[period],generated=Date.parse(payload?.meta?.generatedAt||'');
+    if(!payload?.summary||!Array.isArray(payload.summary.advisors)||!Array.isArray(payload.campaignOptions)||!Number.isFinite(generated))continue;
+    prepared.set(period,{payload:JSON.parse(JSON.stringify(payload)),expires:generated+maxAgeMs});
+   }
+  },
+  read(period,filters={}){
+   if(Object.values(filters).some(v=>Array.isArray(v)?v.some(Boolean):!!v))return null;
+   const entry=prepared.get(period);
+   if(!entry||entry.expires<=now()){prepared.delete(period);return null;}
+   return JSON.parse(JSON.stringify(entry.payload));
+  }
+ };
+}
 </script>

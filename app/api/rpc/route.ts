@@ -5,6 +5,7 @@ import { getDashboardBootstrap } from '../../../lib/bootstrap';
 import { getOpenLeadDetails } from '../../../lib/open-detail';
 import { tursoSelect } from '../../../lib/turso';
 import { assertDashboardBridgeToken } from '../../../lib/bridge-auth';
+import { buildInitialPeriods } from '../../../lib/initial-periods';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -50,14 +51,24 @@ async function exportChunk(tab:string,dataset:string,filters:any,offset:number,l
  return rows.slice(offset,offset+limit);
 }
 
+async function periodInitialPayload(period:string,filters:any={}){
+ const [campaignOptions,summary,meta]=await Promise.all([
+  getPeriodCampaignOptions(period),getFilteredPeriodSummary(period,filters),getMeta()
+ ]);
+ return {campaignOptions,summary,meta};
+}
+
 const handlers:Record<string,(args:any[])=>Promise<any>>={
  getDashboardBootstrap: async ()=>getDashboardBootstrap(),
  getDashboardInitialPayload: async ([openFilters])=>{
   const started=Date.now();
-  const [meta,team,teamFilters,openFiltersOptions,open]=await Promise.all([getMeta(),getTeamSummary({}),getTeamFilterOptions(),getOpenFilterOptions(),getOpenSummary(openFilters||{})]);
-  return {meta:{...meta,durationSeconds:Math.round((Date.now()-started)/100)/10},team,open,teamFilters,openFilters:openFiltersOptions,daily:null,weekly:null,monthly:null};
+  const [meta,team,teamFilters,openFiltersOptions,open,periods]=await Promise.all([
+   getMeta(),getTeamSummary({}),getTeamFilterOptions(),getOpenFilterOptions(),getOpenSummary(openFilters||{}),
+   buildInitialPeriods(period=>periodInitialPayload(period))
+  ]);
+  return {meta:{...meta,durationSeconds:Math.round((Date.now()-started)/100)/10},team,open,teamFilters,openFilters:openFiltersOptions,periods,daily:null,weekly:null,monthly:null};
  },
- getPeriodInitialPayload: async ([period,filters])=>({campaignOptions:await getPeriodCampaignOptions(String(period||'')),summary:await getFilteredPeriodSummary(String(period||''),filters||{}),meta:await getMeta()}),
+ getPeriodInitialPayload: async ([period,filters])=>periodInitialPayload(String(period||''),filters||{}),
  getTeamFilteredSummary: async ([filters])=>getTeamSummary(filters||{}),
  getTeamFilterOptions: async ()=>getTeamFilterOptions(),
  getOpenFilteredSummary: async ([filters])=>getOpenSummary(filters||{}),

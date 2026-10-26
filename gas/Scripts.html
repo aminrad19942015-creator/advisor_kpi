@@ -5,6 +5,7 @@ const readRpc=createReadRpcClient((method,args)=>new Promise((resolve,reject)=>{
  google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[method](...args);
 }));
 const latestRead=createLatestReadRunner(readRpc);
+const initialPeriods=createInitialPeriodStore();
 const fa=v=>Number(v||0).toLocaleString('fa-IR');
 const safe=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;");
 const fmt=v=>{const d=new Date(v);return isNaN(d)?'—':d.toLocaleDateString('fa-IR',{year:'numeric',month:'2-digit',day:'2-digit'})};
@@ -905,9 +906,28 @@ function loadAdvisorTrend(period,advisor){
 
 const periodInitialLoaded={daily:false,weekly:false,monthly:false,reportMonth:false};
 const periodInitialPending={};
+function renderInitialPeriod(period,payload,source,requestedFilters){
+ const pageId=period+'Page';
+ filterOptions.periodCampaign[period]=payload.campaignOptions||[];
+ state.data[period]=payload.summary||{};
+ if(payload.meta)state.data.meta={...(state.data.meta||{}),...payload.meta};
+ periodInitialLoaded[period]=true;
+ renderPeriod(period,pageId,periodTitle(period));
+ $(pageId).dataset.initialSource=source;
+ bindChartHover($(pageId));
+ setPageLoading(pageId,false);
+ if(source!=='snapshot'){
+  snapshotWrite('period:'+period,payload);
+  readRpc.remember('getFilteredPeriodSummary',[period,requestedFilters],payload.summary);
+  updateFreshnessBanner(state.data?.meta||{});
+ }
+}
 function loadInitialPeriod(period){
  const pageId=period+'Page';
  if(periodInitialLoaded[period]||periodInitialPending[period])return;
+ const requestedFilters=JSON.parse(JSON.stringify(filterState[period]));
+ const prepared=initialPeriods.read(period,requestedFilters);
+ if(prepared){renderInitialPeriod(period,prepared,'preloaded',requestedFilters);return;}
  periodInitialPending[period]=true;
  setPageLoading(pageId,true);
  google.script.run
@@ -915,14 +935,7 @@ function loadInitialPeriod(period){
     periodInitialPending[period]=false;
     const snap=snapshotRead('period:'+period);
     if(snap&&validPeriodPayload(snap.payload)){
-      const payload=snap.payload;
-      filterOptions.periodCampaign[period]=payload.campaignOptions||[];
-      state.data[period]=payload.summary||{};
-      if(payload.meta)state.data.meta={...(state.data.meta||{}),...payload.meta};
-      periodInitialLoaded[period]=true;
-      renderPeriod(period,pageId,periodTitle(period));
-      bindChartHover($(pageId));
-      setPageLoading(pageId,false);
+      renderInitialPeriod(period,snap.payload,'snapshot',requestedFilters);
       healthBanner('danger','اتصال موقتاً در دسترس نیست؛ آخرین Snapshot سالم نمایش داده می‌شود.','ذخیره مرورگر: '+new Date(snap.savedAt).toLocaleString('fa-IR'));
       return;
     }
@@ -931,30 +944,22 @@ function loadInitialPeriod(period){
   })
   .withSuccessHandler(payload=>{
     periodInitialPending[period]=false;
+    let source='direct';
     if(!validPeriodPayload(payload)){
       const snap=snapshotRead('period:'+period);
       if(snap&&validPeriodPayload(snap.payload)){
         payload=snap.payload;
+        source='snapshot';
         healthBanner('danger','پاسخ نامعتبر Backend دریافت شد؛ آخرین Snapshot سالم نمایش داده می‌شود.','ذخیره مرورگر: '+new Date(snap.savedAt).toLocaleString('fa-IR'));
       }else{
         setPageLoading(pageId,false);
         toast('پاسخ نامعتبر برای '+period);
         return;
       }
-    }else{
-      snapshotWrite('period:'+period,payload);
-      readRpc.remember('getFilteredPeriodSummary',[period,filterState[period]],payload.summary);
-      updateFreshnessBanner(state.data?.meta||{});
     }
-    filterOptions.periodCampaign[period]=payload?.campaignOptions||[];
-    state.data[period]=payload?.summary||{};
-    if(payload?.meta)state.data.meta={...(state.data.meta||{}),...payload.meta};
-    periodInitialLoaded[period]=true;
-    renderPeriod(period,pageId,periodTitle(period));
-    bindChartHover($(pageId));
-    setPageLoading(pageId,false);
+    renderInitialPeriod(period,payload,source,requestedFilters);
   })
-  .getPeriodInitialPayload(period,filterState[period]);
+  .getPeriodInitialPayload(period,requestedFilters);
 }
 function switchPage(id){
  document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===id));
@@ -972,6 +977,7 @@ function renderAll(options={}){
  $('dataVersionText').textContent=meta.dataVersion?String(meta.dataVersion).slice(-16):'—';
  filterOptions.team=state.data.teamFilters||{};
  filterOptions.open=state.data.openFilters||{};
+ if(!options.fallback)initialPeriods.seed(state.data.periods);
  renderTeam();
  renderOpen();
  makeTableSortable();
@@ -995,7 +1001,8 @@ google.script.run
  })
  .withSuccessHandler(data=>{
    if(validInitialPayload(data)){
-     snapshotWrite('initial',data);
+     const {periods,...initialSnapshot}=data;
+     snapshotWrite('initial',initialSnapshot);
      readRpc.remember('getTeamFilteredSummary',[filterState.team],data.team);
      readRpc.remember('getOpenFilteredSummary',[filterState.open],data.open);
      state.data=data;

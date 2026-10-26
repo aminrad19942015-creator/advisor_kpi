@@ -231,6 +231,12 @@ If the data-service call fails temporarily, the dashboard renders the last valid
 
 The UI also compares Open Leads and Activity timestamps with the fixed Tehran schedule and shows a stale-data warning when a scheduled refresh appears to have been missed.
 
+## Prepared activity tabs
+
+The initial dashboard response optionally includes the unchanged Daily, Weekly, Monthly and Previous-month summary payloads. The local API prepares at most two periods concurrently with a four-second overall budget, isolating failed/slow periods from the initial Team/Open response. No customer-detail rows are prefetched.
+
+The browser renders a prefetched tab on its first click without another Google round trip. Prepared payloads expire one minute after server generation, apply only to the default unfiltered tab, and are not reused for a different period or filtered view. Missing, expired or invalid payloads retain the existing on-demand loader and explicitly labelled last-good fallback. Rendering is lazy, so hidden charts/tables do not slow initial display. The initial browser snapshot excludes the bundle; an opened period uses its existing summary snapshot key.
+
 ## GAS Admin
 
 The same Apps Script project can serve the independent Admin page using:

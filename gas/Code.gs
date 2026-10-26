@@ -303,7 +303,7 @@ function getDashboardInitialPayload(openFilters) {
   return cachedRpc_(
     'getDashboardInitialPayload',
     [openFilters || {}],
-    'dashboard:initial:v3:' + Utilities.base64EncodeWebSafe(
+    'dashboard:initial:v4:' + Utilities.base64EncodeWebSafe(
       Utilities.computeDigest(
         Utilities.DigestAlgorithm.SHA_256,
         JSON.stringify(openFilters || {}),
