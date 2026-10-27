@@ -139,6 +139,16 @@ The reader also supports isolated slot B (`ADVISOR_READ_SLOT=b`, output
 `runtime/fast-read-build-b`, ready marker `buildSlot: "b"`) so subsequent builds
 never modify the files of the currently running reader.
 
+Both runtime tasks retain their logon triggers and have a two-minute repeating
+recovery trigger with `IgnoreNew`, so an already-running instance is never
+restarted. `ops/enable-runtime-recovery.ps1` updates only these two validated,
+current-user tasks, enables missed-start recovery and disables battery-stop
+conditions; CRM task definitions are untouched. The browser also probes the
+native Google cache after an initial connection failure (even with no loaded
+interactive revision), refreshes its fallback data and clears the offline banner
+when a fresh report becomes available. No whole-page reload is needed on the new
+version; older already-open pages need one refresh to receive this recovery code.
+
 The worker checks the authoritative PostgreSQL revision every 30 seconds and
 proactively publishes a compressed report into the existing signed, same-owner
 Google library's temporary cache. The cache is not authoritative: entries are

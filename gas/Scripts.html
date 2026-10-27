@@ -1,6 +1,7 @@
 <script>
 const $=id=>document.getElementById(id);
 const state={data:null};
+let initialPayloadInstalled=false;
 const interactiveClient=createInteractiveReportClient();
 const readRpc=createReadRpcClient((method,args)=>new Promise((resolve,reject)=>{
  try{const local=interactiveClient.read(method,args);if(local.hit){document.documentElement.dataset.lastReadSource='browser';resolve(local.value);return;}}catch(e){console.warn('Local calculation unavailable; using PostgreSQL',e);}
@@ -1021,6 +1022,7 @@ function renderAll(options={}){
 
 google.script.run
  .withFailureHandler(e=>{
+   if(initialPayloadInstalled)return;
    const snap=snapshotRead('initial');
    if(snap&&validInitialPayload(snap.payload)){
      state.data=snap.payload;
@@ -1030,13 +1032,16 @@ google.script.run
    document.querySelector('.loading-card p').textContent='خطا در دریافت اطلاعات: '+(e.message||e);
  })
  .withSuccessHandler(async data=>{
+   if(initialPayloadInstalled)return;
    if(validInitialPayload(data)){
      try{await interactiveClient.seed(data);}catch(e){console.warn('Interactive snapshot unavailable',e);}
+     if(initialPayloadInstalled)return;
      const {periods,interactive,...initialSnapshot}=data;
      snapshotWrite('initial',initialSnapshot);
      readRpc.remember('getTeamFilteredSummary',[filterState.team],data.team);
      readRpc.remember('getOpenFilteredSummary',[filterState.open],data.open);
      state.data={...data,interactive:undefined};
+     initialPayloadInstalled=true;
      renderAll();
      return;
    }
@@ -1052,29 +1057,31 @@ google.script.run
 
 // The heartbeat is a small native Google-cache read, not a queue/DB round trip.
 // A new full report is fetched only when the authoritative data revision changes.
-let revisionCheckPending=false;
-setInterval(()=>{
- if(revisionCheckPending||document.hidden||!interactiveClient.revision)return;
- revisionCheckPending=true;
- google.script.run.withFailureHandler(()=>{revisionCheckPending=false;}).withSuccessHandler(status=>{
-  revisionCheckPending=false;
-  if(!status?.available)return;
-  if(status.revision===interactiveClient.revision){interactiveClient.confirm(status);return;}
-  revisionCheckPending=true;
-  google.script.run.withFailureHandler(()=>{revisionCheckPending=false;}).withSuccessHandler(async data=>{
-   try{
+const connectionMonitor=createReportConnectionMonitor({
+ isHidden:()=>document.hidden,
+ revision:()=>interactiveClient.revision,
+ confirm:status=>interactiveClient.confirm(status),
+ check:()=>new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getInteractiveRevision()),
+ load:()=>new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getDashboardInitialPayload({advisor:[],seniorLead:[],role:[],team:[],personUnit:[],age:'',leadType:['حقیقی'],nextCallReason:[],customerRank:[],campaign:['Ayar','LeadAdvice'],source:[],lastStatus:[]})),
+ accept:async data=>{
     if(!validInitialPayload(data)||!await interactiveClient.seed(data))return;
+    initialPayloadInstalled=true;
     readRpc.clear();
     for(const scope of ['team','open','daily','weekly','monthly','reportMonth','openDetail','dailyDetail','weeklyDetail','monthlyDetail','reportMonthDetail','dailyDimensionDetail','weeklyDimensionDetail','monthlyDimensionDetail','reportMonthDimensionDetail'])latestRead.invalidate(scope);
-    state.data.meta=data.meta;state.data.periods=data.periods;initialPeriods.seed(data.periods);
+    if(!state.data){state.data={...data,interactive:undefined};renderAll();}
+    state.data.meta=data.meta;state.data.periods=data.periods;
+    state.data.teamFilters=data.teamFilters;state.data.openFilters=data.openFilters;
+    initialPeriods.seed(data.periods);
+    const {periods,interactive,...initialSnapshot}=data;snapshotWrite('initial',initialSnapshot);
     filterOptions.team=data.teamFilters;filterOptions.open=data.openFilters;
     for(const p of ['daily','weekly','monthly','reportMonth'])if(data.periods?.[p])filterOptions.periodCampaign[p]=data.periods[p].campaignOptions||[];
     for(const p of ['daily','weekly','monthly','reportMonth'])periodReadAt[p]=0;
     const active=document.querySelector('.page.active')?.id;
     if(active==='teamPage')applyTeamFilters();else if(active==='openPage')applyOpenFilters();else if(active?.endsWith('Page'))applyPeriodFilters(active.slice(0,-4));
-   }catch(e){console.warn('Report refresh failed',e);}finally{revisionCheckPending=false;}
-  }).getDashboardInitialPayload({advisor:[],seniorLead:[],role:[],team:[],personUnit:[],age:'',leadType:['حقیقی'],nextCallReason:[],customerRank:[],campaign:['Ayar','LeadAdvice'],source:[],lastStatus:[]});
- }).getInteractiveRevision();
-},30000);
+    updateFreshnessBanner(data.meta);
+ },
+ onError:error=>console.warn('Report reconnect unavailable',error)
+});
+setInterval(()=>connectionMonitor.tick(),30000);
 
 </script>

@@ -16,6 +16,7 @@ $readSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopI
 $existingReader = Get-ScheduledTask -TaskName $readTaskName -ErrorAction SilentlyContinue
 if ($existingReader -and ($existingReader.Actions.Arguments -notlike ('*' + (Join-Path $PSScriptRoot 'start-fast-read-server.ps1') + '*'))) { throw 'A different task uses this name; inspect it before replacement.' }
 Register-ScheduledTask -TaskName $readTaskName -Action $readAction -Trigger $readTrigger -Principal $readPrincipal -Settings $readSettings -Force | Out-Null
+& (Join-Path $PSScriptRoot 'enable-runtime-recovery.ps1') -TaskName $readTaskName
 Start-ScheduledTask -TaskName $readTaskName
 Write-Output 'FAST_READ_TASK_READY; existing PostgreSQL, CRM tasks and gateway were not stopped.'
 Write-Output 'Verify the authenticated reader on 127.0.0.1:3012 before setting runtime/fast-read-ready.json to {"port":3012} and restarting only the dashboard relay worker.'

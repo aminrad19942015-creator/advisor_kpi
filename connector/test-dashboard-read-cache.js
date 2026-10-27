@@ -10,6 +10,30 @@ const {verifyRequest}=require('./google-relay-protocol');
 const context=vm.createContext({});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../gas/RpcClient.html'),'utf8').replace(/^<script>\s*|\s*<\/script>\s*$/g,''),context);
 
+test('offline initial snapshots reconnect even before an interactive revision exists',async()=>{
+ let available=false,revision='',loads=0,accepted=0,confirmed=0,hidden=false;
+ const monitor=context.createReportConnectionMonitor({
+  isHidden:()=>hidden,revision:()=>revision,
+  check:async()=>({available,revision:'new'}),
+  load:async()=>{loads++;return {revision:'new'};},
+  accept:async data=>{accepted++;revision=data.revision;},
+  confirm:()=>confirmed++
+ });
+ await monitor.tick();assert.equal(loads,0);
+ available=true;await monitor.tick();assert.equal(accepted,1);assert.equal(revision,'new');
+ await monitor.tick();assert.equal(loads,1);assert.equal(confirmed,1);
+ hidden=true;await monitor.tick();assert.equal(confirmed,1);
+});
+
+test('connection recovery deduplicates probes and retries after transient failures',async()=>{
+ let release,checks=0,errors=0,loads=0;
+ const monitor=context.createReportConnectionMonitor({revision:()=>'',check:()=>{checks++;return new Promise(resolve=>release=resolve);},
+  load:async()=>{loads++;throw Error('temporary');},accept:assert.fail,confirm:assert.fail,onError:()=>errors++});
+ const first=monitor.tick();await monitor.tick();assert.equal(checks,1);
+ release({available:true,revision:'new'});await first;assert.equal(errors,1);assert.equal(loads,1);
+ const retry=monitor.tick();assert.equal(checks,2);release({available:false});await retry;assert.equal(errors,1);
+});
+
 test('browser read cache deduplicates in-flight reads, copies results, and expires within 20 seconds',async()=>{
  let calls=0,now=0,release;
  const client=context.createReadRpcClient(async()=>{calls++;await new Promise(r=>release=r);return {rows:[{count:3}]};},{now:()=>now});

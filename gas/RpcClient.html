@@ -54,6 +54,22 @@ function createLatestReadRunner(client){
 
 // Prefetched summaries are usable only for the matching, unfiltered tab and
 // for at most one minute from server generation (not from browser receipt).
+// A native-cache probe also runs after initial failure: no interactive revision
+// exists yet in that case, so revision-gated polling would never reconnect.
+function createReportConnectionMonitor(options){
+ let pending=false;
+ return {async tick(){
+  if(pending||options.isHidden?.())return;
+  pending=true;
+  try{
+   const status=await options.check();
+   if(!status?.available)return;
+   if(status.revision===options.revision())options.confirm(status);
+   else await options.accept(await options.load());
+  }catch(error){options.onError?.(error);}finally{pending=false;}
+ }};
+}
+
 function createInitialPeriodStore(options={}){
  const now=options.now||Date.now,maxAgeMs=options.maxAgeMs??60000,prepared=new Map();
  const periods=['daily','weekly','monthly','reportMonth'];

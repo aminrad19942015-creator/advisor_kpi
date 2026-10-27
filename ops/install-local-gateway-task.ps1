@@ -18,6 +18,7 @@ $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Days
 $principal = New-ScheduledTaskPrincipal -UserId $User -LogonType Interactive -RunLevel Limited
 try {
   Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force -ErrorAction Stop | Out-Null
+  if ($TaskName -eq 'Advisor KPI Local Gateway') { & (Join-Path $PSScriptRoot 'enable-runtime-recovery.ps1') -TaskName $TaskName }
   Write-Host "LOCAL_GATEWAY_TASK_INSTALLED $TaskName"
 } catch {
   $startup = [Environment]::GetFolderPath('Startup')
