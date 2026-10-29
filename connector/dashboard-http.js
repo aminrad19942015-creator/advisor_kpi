@@ -42,6 +42,7 @@ function powershellRequest(url,options={}){
   const escapedCfgFile=cfgFile.replace(/'/g,"''");
   const ps=[
     "$ErrorActionPreference = 'Stop'",
+    "$ProgressPreference = 'SilentlyContinue'",
     "$cfg = Get-Content -Raw -Encoding UTF8 -LiteralPath '"+escapedCfgFile+"' | ConvertFrom-Json",
     "$headers = @{}",
     "if ($cfg.headers) { $cfg.headers.PSObject.Properties | ForEach-Object { $headers[$_.Name] = [string]$_.Value } }",
@@ -99,8 +100,12 @@ function curlRequest(url,options={}){
 }
 
 async function dashboardRequest(url,options={}){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeoutMs(options));
   try{
-    const r=await fetch(url,options);
+    const fetchOptions={...options,signal:options.signal||controller.signal};
+    delete fetchOptions.timeoutMs;
+    const r=await fetch(url,fetchOptions);
     const text=await r.text();
     return {status:r.status,ok:r.ok,text,transport:'fetch'};
   }catch(fetchError){
@@ -111,6 +116,8 @@ async function dashboardRequest(url,options={}){
       console.log('PowerShell fallback failed; retrying with curl.exe: '+String(psError?.message||psError));
       return {...curlRequest(url,options),transport:'curl'};
     }
+  }finally{
+    clearTimeout(timer);
   }
 }
 

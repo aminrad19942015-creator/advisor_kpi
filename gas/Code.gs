@@ -1,5 +1,7 @@
 const GAS_CONFIG = {
   FUNCTION_URL_PROPERTY: 'SUPABASE_DASHBOARD_RPC_URL',
+  RELAY_URL_PROPERTY: 'GAS_RELAY_URL',
+  RELAY_SECRET_PROPERTY: 'GAS_RELAY_SECRET',
   BRIDGE_TOKEN_PROPERTY: 'DASHBOARD_RPC_TOKEN',
   CACHE_CHUNK_CHARS: 28000,
   CACHE_DEFAULT_TTL_SECONDS: 45,
@@ -26,6 +28,8 @@ function getGasHealth() {
     ok: true,
     runtime: 'Google Apps Script',
     functionUrlConfigured: !!props.getProperty(GAS_CONFIG.FUNCTION_URL_PROPERTY),
+    relayUrlConfigured: !!props.getProperty(GAS_CONFIG.RELAY_URL_PROPERTY),
+    relaySecretConfigured: !!props.getProperty(GAS_CONFIG.RELAY_SECRET_PROPERTY),
     bridgeTokenConfigured: !!props.getProperty(GAS_CONFIG.BRIDGE_TOKEN_PROPERTY),
     now: new Date().toISOString()
   };
@@ -33,7 +37,7 @@ function getGasHealth() {
 
 function setInitialConfig(functionUrl, bridgeToken) {
   if (!functionUrl || !/^https:\/\//i.test(String(functionUrl))) {
-    throw new Error('Supabase Function URL is invalid.');
+    throw new Error('Dashboard API URL is invalid.');
   }
   if (!bridgeToken || String(bridgeToken).length < 32) {
     throw new Error('Dashboard bridge token is invalid.');
@@ -53,7 +57,7 @@ function rpcConfig_() {
   const bridgeToken = props.getProperty(GAS_CONFIG.BRIDGE_TOKEN_PROPERTY);
 
   if (!url || !bridgeToken) {
-    throw new Error('GAS is not configured. Set SUPABASE_DASHBOARD_RPC_URL and DASHBOARD_RPC_TOKEN in Script Properties.');
+    throw new Error('GAS is not configured. Set the dashboard API URL and DASHBOARD_RPC_TOKEN in Script Properties.');
   }
   return {
     url: url,
@@ -78,36 +82,25 @@ function cacheManifestKey_(key) {
 
 function cacheGetJson_(key) {
   if (!key) return null;
-  const cache = CacheService.getScriptCache();
-  const rawManifest = cache.get(cacheManifestKey_(key));
-  if (!rawManifest) return null;
-
-  let manifest;
   try {
-    manifest = JSON.parse(rawManifest);
-  } catch (err) {
-    return null;
-  }
-
-  const count = Number(manifest && manifest.count || 0);
-  if (!count || count > 40) return null;
-
-  const keys = [];
-  for (let i = 0; i < count; i++) keys.push(key + ':chunk:' + i);
-  const chunks = cache.getAll(keys);
-  let json = '';
-
-  for (let i = 0; i < count; i++) {
-    const part = chunks[key + ':chunk:' + i];
-    if (part == null) return null;
-    json += part;
-  }
-
-  try {
+    const cache = CacheService.getScriptCache();
+    const rawManifest = cache.get(cacheManifestKey_(key));
+    if (!rawManifest) return null;
+    const manifest = JSON.parse(rawManifest);
+    const count = Number(manifest && manifest.count || 0);
+    if (!Number.isInteger(count) || count < 1 || count > 40) return null;
+    const keys = [];
+    const chunkKey = key + (manifest.version ? ':' + manifest.version : '') + ':chunk:';
+    for (let i = 0; i < count; i++) keys.push(chunkKey + i);
+    const chunks = cache.getAll(keys);
+    let json = '';
+    for (let i = 0; i < count; i++) {
+      const part = chunks[chunkKey + i];
+      if (part == null) return null;
+      json += part;
+    }
     return JSON.parse(json);
-  } catch (err) {
-    return null;
-  }
+  } catch (err) { return null; }
 }
 
 function cachePutJson_(key, value, ttlSeconds) {
@@ -118,15 +111,18 @@ function cachePutJson_(key, value, ttlSeconds) {
   if (count < 1 || count > 40) return;
 
   const ttl = Math.max(1, Math.min(Number(ttlSeconds || GAS_CONFIG.CACHE_DEFAULT_TTL_SECONDS), 21600));
-  const cache = CacheService.getScriptCache();
   const chunks = {};
+  const version = Utilities.getUuid();
 
   for (let i = 0; i < count; i++) {
-    chunks[key + ':chunk:' + i] = json.slice(i * size, (i + 1) * size);
+    chunks[key + ':' + version + ':chunk:' + i] = json.slice(i * size, (i + 1) * size);
   }
 
-  cache.putAll(chunks, ttl);
-  cache.put(cacheManifestKey_(key), JSON.stringify({ count: count }), ttl);
+  try {
+    const cache = CacheService.getScriptCache();
+    cache.putAll(chunks, ttl);
+    cache.put(cacheManifestKey_(key), JSON.stringify({ count: count, version: version }), ttl);
+  } catch (err) {} // A cache outage must not turn a successful database read into an error.
 }
 
 function cacheRemoveJson_(key) {
@@ -137,8 +133,9 @@ function cacheRemoveJson_(key) {
 
   if (rawManifest) {
     try {
-      const count = Number(JSON.parse(rawManifest).count || 0);
-      for (let i = 0; i < Math.min(count, 40); i++) keys.push(key + ':chunk:' + i);
+      const manifest = JSON.parse(rawManifest), count = Number(manifest.count || 0);
+      const prefix = key + (manifest.version ? ':' + manifest.version : '') + ':chunk:';
+      for (let i = 0; i < Math.min(count, 40); i++) keys.push(prefix + i);
     } catch (err) {}
   }
 
@@ -146,6 +143,16 @@ function cacheRemoveJson_(key) {
 }
 
 function fetchDashboardRpc_(method, args) {
+  const props = PropertiesService.getScriptProperties();
+  const relayUrl = props.getProperty(GAS_CONFIG.RELAY_URL_PROPERTY);
+  const relaySecret = props.getProperty(GAS_CONFIG.RELAY_SECRET_PROPERTY);
+  if (relayUrl || relaySecret) {
+    if (!relayUrl || !/^https:\/\//i.test(relayUrl) || !relaySecret || relaySecret.length < 32) {
+      throw new Error('Google relay configuration is incomplete.');
+    }
+    return decodeRpcTransport_(fetchDashboardRpcViaRelay_(relayUrl, relaySecret, method, args));
+  }
+
   const cfg = rpcConfig_();
   const requestId = Utilities.getUuid();
   const payload = JSON.stringify({
@@ -201,35 +208,119 @@ function fetchDashboardRpc_(method, args) {
   throw lastError || new Error('Dashboard RPC failed.');
 }
 
+function relayEnvelope_(secret, body) {
+  const raw = JSON.stringify(body);
+  const timestamp = String(Date.now());
+  const nonce = Utilities.getUuid();
+  const canonical = timestamp + '\n' + nonce + '\n' + raw;
+  const signature = Utilities.base64EncodeWebSafe(
+    Utilities.computeHmacSha256Signature(canonical, secret, Utilities.Charset.UTF_8)
+  ).replace(/=+$/g, '');
+  return {timestamp:timestamp,nonce:nonce,signature:signature,body:body};
+}
+
+function relayCall_(url, secret, body) {
+  const response = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(relayEnvelope_(secret,body)),
+    muteHttpExceptions: true,
+    followRedirects: true
+  });
+  const status = response.getResponseCode();
+  let parsed = null;
+  try { parsed = JSON.parse(response.getContentText('UTF-8')); } catch (err) {}
+  if (status < 200 || status >= 300 || !parsed || parsed.ok !== true) {
+    throw new Error((parsed && parsed.error) || ('Google relay HTTP ' + status));
+  }
+  return parsed.result;
+}
+
+function fetchDashboardRpcViaRelay_(url, secret, method, args) {
+  const allowed = [
+    'getDetailPage',
+    'getDashboardBootstrap', 'getDashboardInitialPayload', 'getPeriodInitialPayload',
+    'getTeamFilteredSummary', 'getTeamFilterOptions', 'getOpenFilteredSummary',
+    'getOpenFilterOptions', 'getOpenLeadDetails', 'getOpenNearDeadlineDetails',
+    'getFilteredPeriodSummary', 'getPeriodCampaignOptions', 'getActivityDetails',
+    'getPeriodKpiDetails', 'getLeadStatusKpiDetails', 'getDimensionDetails',
+    'getRepeatedCallDetails', 'getAdvisorTrend', 'getDashboardMeta',
+    'getDashboardDiagnostics', 'getExportChunk'
+  ];
+  if (allowed.indexOf(String(method)) < 0) throw new Error('RPC method is not allowed through the Google relay.');
+  return relayRpc_(url, secret, 'dashboard', method, args);
+}
+
+function decodeRpcTransport_(value){
+ if(value&&value.__transport==='gzip-json-v1')return JSON.parse(Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(value.body),'application/gzip')).getDataAsString('UTF-8'));
+ return value;
+}
+function getDetailPage(method,args,offset,limit,revision){
+ const secret=String(PropertiesService.getScriptProperties().getProperty(GAS_CONFIG.RELAY_SECRET_PROPERTY)||'');
+ if(secret&&typeof AdvisorQueue!=='undefined'&&typeof AdvisorQueue.signedSnapshot==='function'){
+  try{const hit=AdvisorQueue.signedSnapshot(relayEnvelope_(secret,{action:'snapshotDetail',method:method,args:args||[],offset:offset||0,limit:limit||100,revision:revision||''}));if(hit.available)return decodeRpcTransport_(hit.value);}catch(e){}
+ }
+ return cachedReadRpc_('getDetailPage',[method,args||[],offset||0,limit||100,revision||''],10);
+}
+
+function relayRpc_(url, secret, route, method, args, skipNative) {
+  if (!skipNative && route === 'dashboard' && typeof AdvisorQueue !== 'undefined') {
+    let result=AdvisorQueue.signedReadCall(relayEnvelope_(secret,{action:'request',route:route,method:String(method),args:Array.isArray(args)?args:[],waitMs:18000}));
+    const deadline=Date.now()+150000;
+    while (!result.done && !result.useHttp && Date.now()<deadline) {
+      result=AdvisorQueue.signedReadCall(relayEnvelope_(secret,{action:'wait',jobId:result.jobId,waitMs:18000}));
+    }
+    if (result.useHttp) return relayRpc_(url,secret,route,method,args,true);
+    if (result.error) throw new Error(String(result.error));
+    if (!result.done) throw new Error('Local PostgreSQL gateway did not respond before the relay timeout.');
+    return result.value;
+  }
+  const enqueued = relayCall_(url, secret, {action: 'request', route: route, method: String(method), args: Array.isArray(args) ? args : [], waitMs: 18000});
+  if (enqueued && enqueued.done === true) {
+    if (enqueued.error) throw new Error(String(enqueued.error));
+    return enqueued.value;
+  }
+  const jobId = String(enqueued && enqueued.jobId || '');
+  if (!/^[a-f0-9-]{36}$/i.test(jobId)) throw new Error('Google relay returned an invalid job id.');
+
+  const deadline = Date.now() + 150000;
+  while (Date.now() < deadline) {
+    const result = relayCall_(url, secret, {action: 'wait', jobId: jobId, waitMs: 18000});
+    if (result && result.done === true) {
+      if (result.error) throw new Error(String(result.error));
+      return result.value;
+    }
+  }
+  throw new Error('Local PostgreSQL gateway did not respond before the relay timeout.');
+}
+
 function cachedRpc_(method, args, cacheKey, ttlSeconds) {
   const resolvedKey = activeCacheKey_(cacheKey);
   const hit = cacheGetJson_(resolvedKey);
   if (hit != null) return hit;
 
-  const lock = LockService.getScriptLock();
-  let locked = false;
+  // Independent filters must not wait on a global lock held across network I/O.
+  const result = fetchDashboardRpc_(method, args);
+  if (resolvedKey) cachePutJson_(resolvedKey, result, ttlSeconds);
+  return result;
+}
 
-  try {
-    locked = lock.tryLock(1200);
-    if (locked) {
-      const secondHit = cacheGetJson_(resolvedKey);
-      if (secondHit != null) return secondHit;
-    }
-
-    const result = fetchDashboardRpc_(method, args);
-
-    if (resolvedKey) cachePutJson_(resolvedKey, result, ttlSeconds);
-    return result;
-  } finally {
-    if (locked) lock.releaseLock();
-  }
+function cachedReadRpc_(method, args, ttlSeconds) {
+  const hash = Utilities.base64EncodeWebSafe(Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256, JSON.stringify(args), Utilities.Charset.UTF_8
+  )).slice(0, 32);
+  return cachedRpc_(method, args, 'dashboard:read:v1:' + method + ':' + hash, ttlSeconds || 15);
 }
 
 function getDashboardInitialPayload(openFilters) {
+  const props=PropertiesService.getScriptProperties(),secret=String(props.getProperty(GAS_CONFIG.RELAY_SECRET_PROPERTY)||'');
+  if(secret&&typeof AdvisorQueue!=='undefined'&&typeof AdvisorQueue.signedSnapshot==='function'){
+    try{const hit=AdvisorQueue.signedSnapshot(relayEnvelope_(secret,{action:'snapshot',args:[openFilters||{}]}));if(hit.available)return hit.value;}catch(e){}
+  }
   return cachedRpc_(
     'getDashboardInitialPayload',
     [openFilters || {}],
-    'dashboard:initial:v3:' + Utilities.base64EncodeWebSafe(
+    'dashboard:initial:v4:' + Utilities.base64EncodeWebSafe(
       Utilities.computeDigest(
         Utilities.DigestAlgorithm.SHA_256,
         JSON.stringify(openFilters || {}),
@@ -240,9 +331,15 @@ function getDashboardInitialPayload(openFilters) {
   );
 }
 
+function getInteractiveRevision(){
+ const secret=String(PropertiesService.getScriptProperties().getProperty(GAS_CONFIG.RELAY_SECRET_PROPERTY)||'');
+ if(!secret||typeof AdvisorQueue==='undefined'||typeof AdvisorQueue.signedSnapshot!=='function')return {available:false};
+ try{return AdvisorQueue.signedSnapshot(relayEnvelope_(secret,{action:'snapshotMeta'}));}catch(e){return {available:false};}
+}
+
 function getPeriodInitialPayload(period, filters) {
   const p = String(period || '');
-  return fetchDashboardRpc_('getPeriodInitialPayload', [p, filters || {}]);
+  return cachedReadRpc_('getPeriodInitialPayload', [p, filters || {}]);
 }
 
 function getDashboardBootstrap() {
@@ -250,7 +347,7 @@ function getDashboardBootstrap() {
 }
 
 function getTeamFilteredSummary(filters) {
-  return fetchDashboardRpc_('getTeamFilteredSummary', [filters || {}]);
+  return cachedReadRpc_('getTeamFilteredSummary', [filters || {}]);
 }
 
 function getTeamFilterOptions() {
@@ -258,23 +355,23 @@ function getTeamFilterOptions() {
 }
 
 function getOpenFilteredSummary(filters) {
-  return fetchDashboardRpc_('getOpenFilteredSummary', [filters || {}]);
+  return cachedReadRpc_('getOpenFilteredSummary', [filters || {}]);
 }
 
 function getOpenFilterOptions() {
   return cachedRpc_('getOpenFilterOptions', [], 'dashboard:open-filter-options:v2', 180);
 }
 
-function getOpenLeadDetails(field, value) {
-  return fetchDashboardRpc_('getOpenLeadDetails', [field, value]);
+function getOpenLeadDetails(field, value, filters) {
+  return cachedReadRpc_('getOpenLeadDetails', [field, value, filters || {}], 10);
 }
 
 function getOpenNearDeadlineDetails(leadType, owner, filters) {
-  return fetchDashboardRpc_('getOpenNearDeadlineDetails', [leadType, owner || '', filters || {}]);
+  return cachedReadRpc_('getOpenNearDeadlineDetails', [leadType, owner || '', filters || {}], 10);
 }
 
 function getFilteredPeriodSummary(period, filters) {
-  return fetchDashboardRpc_('getFilteredPeriodSummary', [period, filters || {}]);
+  return cachedReadRpc_('getFilteredPeriodSummary', [period, filters || {}]);
 }
 
 function getPeriodCampaignOptions(period) {
@@ -287,27 +384,27 @@ function getPeriodCampaignOptions(period) {
 }
 
 function getActivityDetails(period, type, user, filters) {
-  return fetchDashboardRpc_('getActivityDetails', [period, type, user, filters || {}]);
+  return cachedReadRpc_('getActivityDetails', [period, type, user, filters || {}], 10);
 }
 
 function getPeriodKpiDetails(period, type, filters) {
-  return fetchDashboardRpc_('getPeriodKpiDetails', [period, type, filters || {}]);
+  return cachedReadRpc_('getPeriodKpiDetails', [period, type, filters || {}], 10);
 }
 
 function getLeadStatusKpiDetails(period, type, filters) {
-  return fetchDashboardRpc_('getLeadStatusKpiDetails', [period, type, filters || {}]);
+  return cachedReadRpc_('getLeadStatusKpiDetails', [period, type, filters || {}], 10);
 }
 
 function getDimensionDetails(period, source, field, value, filters) {
-  return fetchDashboardRpc_('getDimensionDetails', [period, source, field, value, filters || {}]);
+  return cachedReadRpc_('getDimensionDetails', [period, source, field, value, filters || {}], 10);
 }
 
 function getRepeatedCallDetails(period, filters) {
-  return fetchDashboardRpc_('getRepeatedCallDetails', [period, filters || {}]);
+  return cachedReadRpc_('getRepeatedCallDetails', [period, filters || {}], 10);
 }
 
 function getAdvisorTrend(period, advisor) {
-  return fetchDashboardRpc_('getAdvisorTrend', [period, advisor]);
+  return cachedReadRpc_('getAdvisorTrend', [period, advisor], 10);
 }
 
 function getDashboardMeta() {
@@ -421,8 +518,22 @@ function requireAdmin_(token) {
 
 function adminRpc_(token, method, args) {
   requireAdmin_(token);
+  const props = PropertiesService.getScriptProperties();
+  const relayUrl = props.getProperty(GAS_CONFIG.RELAY_URL_PROPERTY);
+  const relaySecret = props.getProperty(GAS_CONFIG.RELAY_SECRET_PROPERTY);
+  if (relayUrl || relaySecret) {
+    if (!relayUrl || !/^https:\/\//i.test(relayUrl) || !relaySecret || relaySecret.length < 32) {
+      throw new Error('Google relay configuration is incomplete.');
+    }
+    return relayRpc_(relayUrl, relaySecret, 'admin', method, args);
+  }
   const cfg = rpcConfig_();
-  const url = String(cfg.url).replace(/\/dashboard-rpc\/?$/, '/admin-rpc');
+  const configuredUrl = String(cfg.url).replace(/\/+$/, '');
+  const url = /\/dashboard-rpc$/i.test(configuredUrl)
+    ? configuredUrl.replace(/\/dashboard-rpc$/i, '/admin-rpc')
+    : /\/api\/rpc$/i.test(configuredUrl)
+      ? configuredUrl.replace(/\/api\/rpc$/i, '/api/admin-rpc')
+      : configuredUrl + '/admin-rpc';
   const response = UrlFetchApp.fetch(url, {
     method: 'post',
     contentType: 'application/json',

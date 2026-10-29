@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - gas-dashboard-v1
+      - monthly-report-v1
   pull_request:
     branches:
       - main
@@ -37,11 +38,29 @@ jobs:
         run: |
           cp gas/Code.gs /tmp/advisor-gas-code.js
           node --check /tmp/advisor-gas-code.js
+          cp gas-relay/Code.gs /tmp/advisor-gas-relay.js
+          node --check /tmp/advisor-gas-relay.js
+
+      - name: Verify Google transport authentication and queue lifecycle
+        run: node --test connector/test-google-relay-protocol.js connector/test-google-relay-server.js connector/test-dashboard-read-cache.js connector/test-initial-periods.js connector/test-period-aml.js connector/test-report-engine.js connector/test-portable-postgres.js
+
+      - name: Parse local runtime and publishing tools
+        run: |
+          node --check ops/local-runtime.cjs
+          node --check ops/stage-google-project.cjs
+          node --check ops/configure-google-runtime.cjs
+          node --check ops/verify-google-postgres.cjs
+          node --check ops/fast-read-server.cjs
+          node --check ops/portable-postgres.cjs
+          node --check ops/verify-report-engine.cjs
 
       - name: Parse GAS browser JavaScript
         run: |
+          node --test connector/test-excel-export.js
           sed '1d;$d' gas/Scripts.html > /tmp/advisor-gas-scripts.js
           node --check /tmp/advisor-gas-scripts.js
+          sed '1d;$d' gas/RpcClient.html > /tmp/advisor-gas-rpc-client.js
+          node --check /tmp/advisor-gas-rpc-client.js
 
       - name: Parse GAS admin browser JavaScript
         run: |
@@ -50,3 +69,9 @@ jobs:
 
       - name: Validate GAS manifest JSON
         run: node -e "JSON.parse(require('fs').readFileSync('gas/appsscript.json','utf8')); console.log('GAS manifest JSON OK')"
+
+      - name: Validate previous-month connector
+        run: |
+          node --check connector/persian-month.js
+          node --check connector/report-month-sync.js
+          node connector/test-persian-month.js

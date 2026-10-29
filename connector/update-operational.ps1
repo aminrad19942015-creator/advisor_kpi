@@ -23,7 +23,7 @@ $files = @(
   "tickets-sync.js",
   "run-operational.ps1",
   "run.cmd",
-  "run-morning.cmd",
+  "run-activity.cmd",
   "install-schedule.ps1",
   "install-history-schedule.ps1",
   "verify-schedule.ps1",
@@ -39,14 +39,14 @@ foreach ($file in $files) {
 }
 
 Write-Host ""
-Write-Host "Installing 07:00 Morning schedule..."
-powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "install-history-schedule.ps1")
-if ($LASTEXITCODE -ne 0) { throw "Morning schedule installation failed with exit code $LASTEXITCODE." }
-
-Write-Host ""
-Write-Host "Installing intraday Open Leads schedule..."
+Write-Host "Installing 07:00/09:00/12:00/15:00 Open Leads schedule..."
 powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "install-schedule.ps1")
 if ($LASTEXITCODE -ne 0) { throw "Open Leads schedule installation failed with exit code $LASTEXITCODE." }
+
+Write-Host ""
+Write-Host "Installing 07:30 Activity schedule..."
+powershell -ExecutionPolicy Bypass -File (Join-Path $connectorDir "install-history-schedule.ps1")
+if ($LASTEXITCODE -ne 0) { throw "Activity schedule installation failed with exit code $LASTEXITCODE." }
 
 Write-Host ""
 Write-Host "Verifying schedules..."
@@ -56,7 +56,7 @@ if ($LASTEXITCODE -ne 0) { throw "Schedule verification failed with exit code $L
 Write-Host ""
 Write-Host "Operational connector update completed."
 Write-Host "Days: Saturday-Thursday (Friday disabled)"
-Write-Host "07:00: Open Leads, then Lead/Opportunity, Calls and Tickets serially"
-Write-Host "09:00, 12:00, 15:00: Open Leads"
+Write-Host "07:00, 09:00, 12:00, 15:00: Open Leads"
+Write-Host "07:30: Lead/Opportunity, Calls and Tickets"
 Write-Host "Overlap protection: enabled by a global Windows mutex"
-Write-Host "Missed-run recovery: enabled (StartWhenAvailable)"
+Write-Host "Missed Activity recovery: enabled from 07:30 onward"

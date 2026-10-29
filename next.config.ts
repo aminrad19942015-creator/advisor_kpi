@@ -8,6 +8,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Build/read rollout is isolated from the live connector API on port 3010.
+  distDir: process.env.ADVISOR_READ_BUILD==='1'?(process.env.ADVISOR_READ_SLOT==='b'?'runtime/fast-read-build-b':'runtime/fast-read-build'):'.next',
   poweredByHeader: false,
   async headers() {
     return [

@@ -1,0 +1,11 @@
+{
+  "dashboard": {
+    "scriptId": "1dowavTCdu4WOg-1JtcNEqAIf-0Zr9ifr7JzsYdZvxys9aEd84zr-5742",
+    "deploymentId": "AKfycbwYAApq4RoLY6NsDnI6rOjpOiKhhsqpKgvT117cmF6OINCqSSLR7GYzs9BOvCjGgFyF",
+    "access": "ANYONE_ANONYMOUS"
+  },
+  "relay": {
+    "scriptId": "14Jr2zKJ5YazrfDTuI6Znt094Hcd_HtJyGZKTHIBkvqeYSXoME7o1HgOb",
+    "deploymentId": "AKfycbzXjaIOlh7aTkiqByTbqaZ2OJnmU-YpAkW9SsLLUVg2SUxDv57Z6vmchnCumIfQgQgL6g"
+  }
+}

@@ -2,19 +2,31 @@
 
 This folder contains the new Google Apps Script runtime for the Advisor KPI dashboard.
 
+## Current local PostgreSQL publication
+
+The existing coworkers' dashboard deployment now uses the separate Google Apps Script queue and an outbound worker on the office PC. PostgreSQL and the Next.js API listen only on loopback. No Cloudflare, public PostgreSQL port, Google Sheets, or additional hosting provider is used by this path. The queue uses owner-private temporary Drive JSON files and HMAC-signed requests.
+
+Current project/deployment IDs and the dashboard's pre-existing `ANYONE_ANONYMOUS` access setting are recorded in `ops/apps-script-targets.json`. The older domain-only examples below describe a Workspace option, not this personal-account deployment. Production Script Properties select `GAS_RELAY_URL` plus `GAS_RELAY_SECRET`; legacy direct-API properties remain available for rollback and existing admin sessions.
+
+See `ops/README.md` for staging, official-clasp publication, current-user startup, CRM schedules, and the end-to-end verification command. Bootstrap source containing local credentials is generated only in ignored runtime folders and is removed before versioned publication.
+
 ## Target architecture
 
 ```
 CRM / Windows Connector
         |
         v
-Supabase Edge Function: connector-api
+Loopback Gateway: /api/crm-shadow + /api/crm-activity
         |
         v
-Supabase PostgreSQL  <-- authoritative operational snapshots
+Portable PostgreSQL on the office PC  <-- authoritative operational snapshots
         |
         v
-Supabase Edge Function: dashboard-rpc
+Loopback Gateway: /api/rpc + /api/admin-rpc
+        ^
+        | outbound polling by local worker
+        v
+Private Google Apps Script queue
         |
         v
 Google Apps Script Web App
@@ -23,7 +35,7 @@ Google Apps Script Web App
 Browser
 ```
 
-The company workstation is required only for CRM refreshes. If it is off, the dashboard continues serving the last successful Supabase snapshot.
+The company workstation is required for the database, local worker, and CRM refreshes. It must remain powered on with the user logged in. PostgreSQL itself is never exposed publicly.
 
 ## Non-negotiable runtime rules
 
@@ -40,7 +52,7 @@ The company workstation is required only for CRM refreshes. If it is off, the da
 
 ### Data stability
 
-- Supabase remains the source of truth.
+- Local PostgreSQL remains the source of truth after cutover.
 - A failed Connector run must not replace the last good snapshot.
 - Open Leads uses shadow/next staging semantics.
 - Activity batches are prepared in staging and swapped transactionally.
@@ -81,18 +93,17 @@ Required Script Properties:
 
 The browser never receives these values.
 
-The Supabase Edge Function:
-- has platform JWT verification disabled because GAS is not a Supabase user session,
-- requires `DASHBOARD_RPC_TOKEN` on every dashboard POST request,
-- compares only a SHA-256 hash stored in the private schema,
-- connects to Postgres using Supabase's server-side `SUPABASE_DB_URL`,
-- exposes only the dashboard RPC methods.
+The local gateway:
+- requires `DASHBOARD_RPC_TOKEN` on every dashboard and admin RPC POST request,
+- requires `CRM_CONNECTOR_TOKEN` on every Connector request,
+- connects only to the local `DATABASE_URL`,
+- exposes only the dashboard, admin, and Connector HTTP routes.
 
-The GAS manifest is restricted to the advisor-kpi Supabase hostname and is configured for domain-only Web App access.
+The GAS manifest permits the advisor-kpi Supabase hostname and the `/api/` path on temporary `trycloudflare.com` subdomains for connectivity testing. The latter is intentionally broad because Quick Tunnel hostnames are randomly generated; the gateway must keep token authentication enabled. The Web App remains configured for domain-only access.
 
 ## Production status
 
-Production branch: `main`
+Migration branch: `monthly-report-v1`
 
 Migration branch: `gas-dashboard-v1` (completed and ready to merge)
 
@@ -103,8 +114,7 @@ Implemented:
 - one-call initial period bootstrap
 - retry only for transient HTTP errors
 - chunked Script Cache + lock to reduce stampedes
-- Supabase `dashboard-rpc` Edge Function
-- Supabase `connector-api` Edge Function for Open Leads / Activity / Config / Commands
+- Local Next.js dashboard RPC and Connector routes
 - PostgreSQL-backed versioned cache
 - unique data guards + dashboard indexes
 - atomic activity batch replacement code
@@ -126,18 +136,18 @@ Implemented after the initial scaffold:
 - aggregate dashboard diagnostics RPC
 - one-call `runCutoverPreflight()` for GAS + database health
 
-Production runtime is now:
-- Windows Connector for CRM refresh only
-- Supabase PostgreSQL + Edge Functions as the authoritative backend
+Target runtime is:
+- Windows Connector for CRM refresh
+- Portable PostgreSQL + local Next.js gateway as the authoritative backend
 - Google Apps Script Web App as the user/Admin runtime
-- Vercel/Railway are not part of the operational request path
+- Supabase is used only for the one-time verified migration
 
 ## Apps Script configuration
 
 Function URL:
 
 ```
-https://tdsqkxyqmebyufcmskkm.supabase.co/functions/v1/dashboard-rpc
+https://YOUR-STABLE-GATEWAY.example/api/rpc
 ```
 
 Do not commit API keys, database credentials, CRM passwords, Connector tokens, or the dashboard bridge token.
@@ -158,12 +168,12 @@ The result checks both:
 Diagnostics include aggregate row counts, Daily/Weekly/Monthly consistency, Open Leads availability, staging state, cache state, and the three Activity component timestamps. No customer-level rows are returned by the diagnostic endpoint.
 
 
-## Supabase connector cutover
+## Local connector cutover
 
 Prepared endpoint base:
 
 ```
-https://tdsqkxyqmebyufcmskkm.supabase.co/functions/v1/connector-api
+https://YOUR-STABLE-GATEWAY.example/api
 ```
 
 Routes:
@@ -177,15 +187,11 @@ The Edge Function is custom-authenticated with `CRM_CONNECTOR_TOKEN` and is fail
 
 Prepared workstation scripts:
 
-- `connector/cutover-supabase.ps1`
-  - backs up `.env.local`
+- `ops/configure-connector-local-gateway.ps1`
   - rewrites only dashboard endpoint variables
-  - preserves CRM credentials
-  - runs endpoint verification
-- `connector/verify-supabase-endpoints.ps1`
-  - verifies all four Supabase routes using the existing Connector token
+  - preserves CRM credentials and local snapshots
 
-The company workstation is cut over to the Supabase Connector API. Future operational updates are sourced from the `main` branch.
+The company workstation remains stopped until the local PostgreSQL migration and GAS preflight both pass.
 
 ## Morning failure policy
 
@@ -210,7 +216,7 @@ Required GAS Script Properties are only:
 - `SUPABASE_DASHBOARD_RPC_URL`
 - `DASHBOARD_RPC_TOKEN`
 
-The plain bridge token exists only in GAS Script Properties. Supabase stores only its SHA-256 hash in `private.dashboard_rpc_auth`. The browser never receives the token.
+The plain bridge token exists only in GAS Script Properties and the local gateway environment. The browser never receives the token.
 
 
 ## Browser last-good fallback
@@ -221,9 +227,15 @@ The user dashboard stores only aggregate / advisor-summary payloads in browser l
 
 Customer-level drilldown rows are not persisted in browser storage.
 
-If the GAS-to-Supabase call fails temporarily, the dashboard renders the last valid summary and shows a visible fallback warning instead of rendering zeros.
+If the data-service call fails temporarily, the dashboard renders the last valid summary and shows a visible fallback warning instead of rendering zeros.
 
 The UI also compares Open Leads and Activity timestamps with the fixed Tehran schedule and shows a stale-data warning when a scheduled refresh appears to have been missed.
+
+## Prepared activity tabs
+
+The initial dashboard response optionally includes the unchanged Daily, Weekly, Monthly and Previous-month summary payloads. The local API prepares at most two periods concurrently with a four-second overall budget, isolating failed/slow periods from the initial Team/Open response. No customer-detail rows are prefetched.
+
+The browser renders a prefetched tab on its first click without another Google round trip. Prepared payloads expire one minute after server generation, apply only to the default unfiltered tab, and are not reused for a different period or filtered view. Missing, expired or invalid payloads retain the existing on-demand loader and explicitly labelled last-good fallback. Rendering is lazy, so hidden charts/tables do not slow initial display. The initial browser snapshot excludes the bundle; an opened period uses its existing summary snapshot key.
 
 ## GAS Admin
 
@@ -243,4 +255,28 @@ Required additional Script Property:
 
 - `ADMIN_PASSWORD`
 
-The browser never receives the dashboard bridge token. Admin writes pass through GAS to the separate Supabase `admin-rpc` Edge Function, and successful Admin writes increment `admin_revision` so dashboard caches are invalidated automatically.
+The browser never receives the dashboard bridge token. Admin writes pass through GAS to the local `/api/admin-rpc` route, and successful Admin writes increment `admin_revision` so dashboard caches are invalidated automatically.
+
+## Self-contained Excel exports
+
+## Interactive read reuse
+
+Summary filters and drilldowns share an exact-argument, page-memory-only read cache.
+Fresh results are reused for 20 seconds; results up to five minutes old may render
+immediately with an explicit refresh label while a fresh read runs in the background.
+Refresh failures remain labelled, and changing filters invalidates old detail requests.
+The cache is bounded to 32 entries / approximately 8 MB of serialized UTF-16 data;
+oversized results are not retained. No new localStorage or Google Sheets storage is used.
+Prepared tabs use their original generation time for their five-minute stale ceiling.
+This does not eliminate Google transport latency for a never-before-requested filter or detail.
+
+## Excel vendor provenance
+
+`ExcelVendor.html` wraps the unmodified SheetJS CE 0.20.3 mini browser build in a script tag from
+`https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js`.
+SHA-256: `0cb353f830d7288385492c83d277b058ddeac664ca51cf1393aa1fd3e2b70939`.
+Its Apache-2.0 license is preserved in `ExcelVendor.LICENSE.txt`.
+The dashboard includes it inline, so clicking Export does not fetch code from a CDN.
+The smaller mini build retains the existing XLSX writer without unused legacy spreadsheet formats.
+`node --test connector/test-excel-export.js` checks the pinned bytes and round-trips
+the actual Persian export helpers, including numeric AML columns and multiple data chunks.

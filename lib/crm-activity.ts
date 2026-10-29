@@ -346,7 +346,7 @@ export async function finalizeCrmActivityBatch(batchId:string,expected:any,sourc
   const requestedKeys=Object.keys(expected||{}).filter(key=>TARGETS[key]);
   if(!requestedKeys.length) throw new Error('CRM activity finalize has no datasets.');
 
-  if(databaseProvider()==='Supabase'){
+  if(databaseProvider()==='PostgreSQL'){
     const prepared:PreparedDataset[]=[];
     try{
       for(const key of requestedKeys){
