@@ -10,7 +10,10 @@ const factsApi=load(path.join(root,'lib/report-facts.ts')),sqlApi=load(path.join
 const engine=vm.createContext({});vm.runInContext(fs.readFileSync('gas/FilterEngine.html','utf8').replace(/^<script>\s*|\s*<\/script>\s*$/g,''),engine);
 const calculate=vm.runInContext('ReportEngine.period',engine);
 function canonical(value){if(value&&typeof value.toISOString==='function')return value.toISOString().slice(0,10);if(typeof value==='string'&&/^\d{4}-\d\d-\d\dT00:00:00\.000Z$/.test(value))return value.slice(0,10);if(Array.isArray(value))return value.map(canonical).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonical(value[k])]));if(typeof value==='number')return Math.round(value*1e7)/1e7;return value;}
-(async()=>{for(const period of ['daily','weekly','monthly','reportMonth']){
+(async()=>{
+ const ready=await require('./portable-postgres.cjs').ensurePortablePostgres({databaseUrl:process.env.DATABASE_URL,dataDir:process.env.PORTABLE_POSTGRES_DATA_DIR,startIfStopped:false});
+ process.env.DATABASE_URL=ready.databaseUrl;
+ for(const period of ['daily','weekly','monthly','reportMonth']){
  const start=Date.now(),facts=await factsApi.getReportFacts(period);
  const member=facts.members.find(p=>p.role==='مشاور')||facts.members[0];
  const campaign=facts.leads.find(r=>r[2])?.[2];

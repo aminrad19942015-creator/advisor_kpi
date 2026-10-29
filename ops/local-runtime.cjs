@@ -2,7 +2,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
-const {spawn, execFileSync} = require('node:child_process');
+const {spawn} = require('node:child_process');
+const {ensurePortablePostgres} = require('./portable-postgres.cjs');
 const root = path.resolve(__dirname, '..');
 process.chdir(root);
 process.loadEnvFile(path.join(root, '.env.local'));
@@ -44,15 +45,11 @@ async function portOpen(targetPort) {
   });
 }
 async function ensureDatabase() {
-  const url = new URL(process.env.DATABASE_URL || '');
-  if (!['127.0.0.1','localhost','[::1]'].includes(url.hostname)) throw new Error('A loopback PostgreSQL URL is required.');
-  if (!await portOpen(Number(url.port || 5432))) {
-    const data = process.env.PORTABLE_POSTGRES_DATA_DIR, bin = process.env.PORTABLE_POSTGRES_BIN;
-    if (!data || !bin) throw new Error('Portable PostgreSQL is stopped; its data/bin paths must be configured.');
-    execFileSync(path.join(bin,'pg_ctl.exe'), ['-D',data,'-l',path.join(runtime,'postgres-start.log'),'start','-w','-t','30'], {windowsHide:true,stdio:'ignore'});
-  }
-  const sql = require('postgres')(process.env.DATABASE_URL,{ssl:false,max:1,connect_timeout:5});
-  try { await sql.unsafe('SELECT 1'); } finally { await sql.end({timeout:1}); }
+  const ready=await ensurePortablePostgres({databaseUrl:process.env.DATABASE_URL,
+    dataDir:process.env.PORTABLE_POSTGRES_DATA_DIR,bin:process.env.PORTABLE_POSTGRES_BIN,
+    logFile:path.join(runtime,'postgres-start.log'),startIfStopped:true});
+  process.env.DATABASE_URL=ready.databaseUrl;
+  note('Portable PostgreSQL verified on loopback port='+ready.port+'; existing cluster was not restarted.');
 }
 async function ensureGateway() {
   if (stopping) return;
@@ -82,6 +79,7 @@ guard.once('error', error => {
   if (error.code === 'EADDRINUSE') note('A local runtime is already running.');
   else { console.error(error.message); process.exitCode = 1; }
 });
-guard.listen(port + 1, '127.0.0.1', () => start().catch(error => {
-  console.error(error.message); process.exitCode = 1; stop();
-}));
+async function boot(){
+ try{await start();}catch(error){note('Runtime startup waiting: '+error.message);later(boot,15000);}
+}
+guard.listen(port + 1, '127.0.0.1', boot);

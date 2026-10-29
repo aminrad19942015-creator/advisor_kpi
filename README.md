@@ -149,6 +149,15 @@ interactive revision), refreshes its fallback data and clears the offline banner
 when a fresh report becomes available. No whole-page reload is needed on the new
 version; older already-open pages need one refresh to receive this recovery code.
 
+Portable PostgreSQL startup explicitly receives the configured port and a
+loopback-only listen address. If another local launcher has already started the
+same cluster on a different port, both runtime processes verify the live
+postmaster PID file and the server's actual `data_directory` before reusing that
+endpoint in child-process memory. Neither secrets nor persistent connection URLs
+are rewritten, and the shared database is never stopped or restarted. A reader
+waits for the database; the gateway retries incomplete boot instead of relying
+on a fresh Windows logon.
+
 The worker checks the authoritative PostgreSQL revision every 30 seconds and
 proactively publishes a compressed report into the existing signed, same-owner
 Google library's temporary cache. The cache is not authoritative: entries are
