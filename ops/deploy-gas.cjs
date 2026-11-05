@@ -23,6 +23,14 @@ function assertTarget(deployments, target) {
   if (!Number.isInteger(previous?.versionNumber)) throw new Error('Configured deployment is missing or has no immutable version. No push performed.');
   return previous;
 }
+function verifyDeployment(read, target, version) {
+  // Google's deployment list can briefly report the old version after an update.
+  for (let attempt=0; attempt<5; attempt++) {
+    const deployed = assertTarget(read(),target);
+    if (deployed.versionNumber === version) return deployed;
+  }
+  throw new Error('Deployment version verification failed; inspect receipt and remote deployment.');
+}
 function digest(directory) {
   const canonical = v => Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])) : v;
   return Object.fromEntries(fs.readdirSync(directory).filter(n=>/\.(gs|js|html|json)$/.test(n) && !n.startsWith('.')).sort().map(n=>[
@@ -91,8 +99,7 @@ function main() {
     receipt.newVersion = version;
     fs.writeFileSync(receiptFile,JSON.stringify(receipt,null,2));
     clasp(stage,'create-deployment','--deploymentId',target.deploymentId,'--versionNumber',String(version),'--description',description);
-    const deployed = assertTarget(JSON.parse(clasp(stage,'list-deployments')),target);
-    if (deployed.versionNumber !== version) throw new Error('Deployment version verification failed; inspect receipt and remote deployment.');
+    verifyDeployment(()=>JSON.parse(clasp(stage,'list-deployments')),target,version);
     receipt.verified = true;
     fs.writeFileSync(receiptFile,JSON.stringify(receipt,null,2));
     console.log(`GAS_DEPLOY_OK version=${version} previous=${previous.versionNumber}\nhttps://script.google.com/macros/s/${target.deploymentId}/exec\nReceipt: ${receiptFile}`);
@@ -107,4 +114,4 @@ if (require.main === module) {
     process.exitCode = 1;
   }
 }
-module.exports = {assertReleaseBranch,assertClean,assertTarget,digest};
+module.exports = {assertReleaseBranch,assertClean,assertTarget,digest,verifyDeployment};

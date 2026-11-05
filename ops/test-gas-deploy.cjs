@@ -5,9 +5,18 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
-const {assertReleaseBranch,assertClean,assertTarget,digest} = require('./deploy-gas.cjs');
+const {assertReleaseBranch,assertClean,assertTarget,digest,verifyDeployment} = require('./deploy-gas.cjs');
 const {validate} = require('./validate-gas.cjs');
 const root = path.resolve(__dirname,'..');
+test('deployment verification tolerates stale Google reads but stops on persistent mismatch',()=>{
+  let calls=0;
+  const read=()=>[{deploymentId:'existing',versionNumber:++calls<3?28:29}];
+  assert.equal(verifyDeployment(read,{deploymentId:'existing'},29).versionNumber,29);
+  assert.equal(calls,3);
+  calls=0;
+  assert.throws(()=>verifyDeployment(()=>{calls++;return [{deploymentId:'existing',versionNumber:28}];},{deploymentId:'existing'},29));
+  assert.equal(calls,5);
+});
 test('reject main, detached HEAD, dirty source and missing/head deployments',()=>{
   assert.throws(()=>assertReleaseBranch('main'));
   assert.throws(()=>assertReleaseBranch('HEAD'));
