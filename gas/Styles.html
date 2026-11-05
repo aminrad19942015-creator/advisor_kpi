@@ -197,4 +197,14 @@ html,body,button,input,select,textarea{font-family:'Vazirmatn',sans-serif!import
 .data-health-banner.info{background:#102d3d;border-color:#28617c;color:#c8efff}
 .data-health-banner b{color:inherit}
 .data-health-banner .health-meta{opacity:.82;font-size:10.5px}
+
+/* v20 — typography and cascade stabilization */
+:root{--font-fa:'Vazirmatn',Tahoma,'Segoe UI',Arial,sans-serif}
+html,body,button,input,select,textarea,.table,.table th,.table td,.multi-btn,.multi-option,.multi-tool,.export-btn,.chart-select select,.chart-axis,svg text{
+  font-family:var(--font-fa)!important;
+}
+body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.brand h1,.title h2{letter-spacing:normal!important}
+.sidebar .data-box.online-source{display:block!important}
+
 </style>
