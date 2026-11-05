@@ -1004,8 +1004,6 @@ document.querySelectorAll('.nav-item').forEach(b=>b.onclick=()=>switchPage(b.dat
 
 function renderAll(options={}){
  const meta=state.data.meta||{};
- $('lastSyncText').textContent=meta.lastSyncAt?new Date(meta.lastSyncAt).toLocaleString('fa-IR'):'—';
- $('dataVersionText').textContent=meta.dataVersion?String(meta.dataVersion).slice(-16):'—';
  filterOptions.team=state.data.teamFilters||{};
  filterOptions.open=state.data.openFilters||{};
  if(!options.fallback)initialPeriods.seed(state.data.periods);
