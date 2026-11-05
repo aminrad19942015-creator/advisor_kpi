@@ -2,6 +2,11 @@
 
 This folder contains the new Google Apps Script runtime for the Advisor KPI dashboard.
 
+For direct agent-operated publication to the **existing** project, use
+`npm run gas:deploy` (or `gas/deploy.ps1`). See [DEPLOY.md](DEPLOY.md) for setup,
+read-only checks, OAuth recovery, release receipts and rollback. Do not copy/paste
+GAS source files manually.
+
 ## Current local PostgreSQL publication
 
 The existing coworkers' dashboard deployment now uses the separate Google Apps Script queue and an outbound worker on the office PC. PostgreSQL and the Next.js API listen only on loopback. No Cloudflare, public PostgreSQL port, Google Sheets, or additional hosting provider is used by this path. The queue uses owner-private temporary Drive JSON files and HMAC-signed requests.

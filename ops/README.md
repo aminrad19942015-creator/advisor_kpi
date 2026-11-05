@@ -21,7 +21,7 @@ The migration script is source-preserving: it reads Supabase, backs up the curre
 
 The official Google `clasp` tool is installed under `%LOCALAPPDATA%\AdvisorKpiTools\clasp`; its OAuth credentials remain in the user's `.clasprc.json`, outside Git. `ops/apps-script-targets.json` records only project/deployment IDs and the existing access setting. No password or token belongs in it.
 
-`node ops/stage-google-project.cjs dashboard` copies the reviewed source into ignored `runtime/gas-dashboard-deploy`. Use `ops/apps-script.ps1 -Project dashboard push --force`, then `deploy --deploymentId` with the existing dashboard deployment ID to retain the coworkers' URL. Use `-Project relay` for the separate transport project. Always check exit codes and verify the existing deployment ID before updating it.
+For routine dashboard publication, use `npm run gas:deploy` or `gas/deploy.ps1` on a clean committed `monthly-report-v1` checkout. This performs validation, backup, push, remote content verification and versioned update of the existing URL in one command. See [the deployment guide](../gas/DEPLOY.md). The lower-level `stage-google-project.cjs` and `apps-script.ps1` remain available for relay administration and rollback.
 
 The one-time `--bootstrap` stage generates an owner-run `ownerSetupOnce` function from the ignored local environment. After its successful execution, stage again without `--bootstrap` and push before creating a version. This removes the temporary setup source; subsequent code releases do not require re-entering credentials in the browser.
 

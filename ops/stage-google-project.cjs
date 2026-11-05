@@ -3,14 +3,21 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
-process.loadEnvFile(path.join(root,'.env.local'));
 const project = process.argv[2];
 if (!['dashboard','relay'].includes(project)) throw new Error('Choose dashboard or relay.');
 const bootstrap = process.argv.includes('--bootstrap');
+// Normal publication needs only IDs and OAuth, never backend credentials.
+if (bootstrap) process.loadEnvFile(path.join(root,'.env.local'));
 const targets = require('./apps-script-targets.json');
 const source = path.join(root, project === 'relay' ? 'gas-relay' : 'gas');
 const output = path.join(root,'runtime','gas-' + project + '-deploy');
 fs.mkdirSync(output,{recursive:true});
+// Remove stale deployable files, including any previous one-time secret bootstrap.
+for (const name of fs.readdirSync(output)) {
+  if (/\.(gs|js|html|json)$/i.test(name) && fs.lstatSync(path.join(output,name)).isFile()) {
+    fs.unlinkSync(path.join(output,name));
+  }
+}
 for (const name of fs.readdirSync(source)) {
   if (/\.(gs|html)$/.test(name)) fs.copyFileSync(path.join(source,name),path.join(output,name));
 }

@@ -23,13 +23,22 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate GAS release safeguards and complete includes
+        run: |
+          node ops/validate-gas.cjs
+          node --test ops/test-gas-deploy.cjs
+
       - name: Runtime versions
         run: |
           node --version
           npm --version
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Next.js production build
         run: npm run build
