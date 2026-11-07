@@ -5,7 +5,8 @@
   "type": "commonjs",
   "scripts": {
     "sync": "node sync.js",
-    "discover-activity": "node discover-activity.js"
+    "discover-activity": "node discover-activity.js",
+    "test:upload": "node test-upload-client.js"
   },
   "dependencies": {
     "dotenv": "^17.2.1",

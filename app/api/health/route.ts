@@ -9,7 +9,7 @@ export async function GET(){
     return NextResponse.json({
       ok: true,
       service: 'advisor-kpi',
-      database: 'turso',
+      database: meta.source || 'PostgreSQL',
       dataVersion: meta.dataVersion,
       lastSyncAt: meta.lastSyncAt,
       checkedAt: new Date().toISOString(),

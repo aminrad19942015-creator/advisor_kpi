@@ -3,6 +3,7 @@ import { tursoBatch, tursoSelect, tableColumns } from './turso.ts';
 const SHADOW_TABLE='open_leads_crm_shadow';
 const NEXT_TABLE='open_leads_crm_shadow_next';
 const STAGING_TABLE='crm_open_leads_shadow_chunks';
+const MAX_CHUNK_ROWS=100;
 
 function ident(name:string){
   if(!/^[_a-zA-Z0-9]+$/.test(name)) throw new Error('Invalid SQL identifier.');
@@ -36,12 +37,12 @@ export async function startCrmShadowBatch(){
   const batchId=crypto.randomUUID();
   const cutoff=new Date(Date.now()-6*3600_000).toISOString();
   await tursoBatch([{sql:`DELETE FROM ${ident(STAGING_TABLE)} WHERE created_at<?`,args:[cutoff]}]);
-  return {batchId,maxChunkRows:400};
+  return {batchId,maxChunkRows:MAX_CHUNK_ROWS};
 }
 
 export async function appendCrmShadowChunk(batchId:string,seq:number,rows:any[]){
   if(!batchId || !Number.isInteger(seq) || seq<0) throw new Error('Invalid CRM shadow chunk.');
-  if(!Array.isArray(rows) || rows.length<1 || rows.length>400) throw new Error('CRM shadow chunk must contain 1..400 rows.');
+  if(!Array.isArray(rows) || rows.length<1 || rows.length>MAX_CHUNK_ROWS) throw new Error(`CRM shadow chunk must contain 1..${MAX_CHUNK_ROWS} rows.`);
   await ensureCrmShadowTables();
   await tursoBatch([{
     sql:`INSERT INTO ${ident(STAGING_TABLE)}(batch_id,seq,payload_json,created_at) VALUES(?,?,?,?)
