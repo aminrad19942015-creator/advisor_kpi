@@ -14,7 +14,7 @@ export async function getReportFacts(period:string){
   tursoSelect(`SELECT owner,lead_number,campaign,last_status,customer_rank,source,source_ticket_contact_topic,${day('last_modified_date')} AS day,CASE WHEN NULLIF(created_date,'') IS NOT NULL AND NULLIF(last_modified_date,'') IS NOT NULL AND last_modified_date::timestamptz>=created_date::timestamptz THEN EXTRACT(EPOCH FROM(last_modified_date::timestamptz-created_date::timestamptz))/86400.0 END AS close_days FROM ${prefix}_leads`),
   tursoSelect(`SELECT creator,lead_number,registration_type,status,${day('created_date')} AS day FROM ${prefix}_opportunities`),
   tursoSelect(`SELECT "user",lead_number,subject,queue,${day('start_date')} AS day FROM ${prefix}_calls`),
-  tursoSelect(`SELECT owner,status_reason,COALESCE(NULLIF(contact_topic,''),NULLIF(main_subject,''),'') AS topic,${day('closed_at')} AS day FROM ${prefix}_tickets`)
+  tursoSelect(`SELECT owner,status_reason,COALESCE(NULLIF(contact_topic,''),NULLIF(main_subject,''),'') AS topic,${day('closed_at')} AS day FROM ${prefix}_tickets WHERE owner IN (SELECT name FROM team_members)`)
  ]);
  const refs=new Map<string,number>();
  const ref=(value:any)=>{const key=String(value??'');if(!key)return 0;if(!refs.has(key))refs.set(key,refs.size+1);return refs.get(key);};
@@ -37,7 +37,7 @@ export async function getOpenFacts(){
 
 export async function getDashboardRevision(){
  const rows=await tursoSelect("SELECT key,value FROM dashboard_meta WHERE key LIKE 'crm_%' OR key IN ('admin_revision','last_sync_at','data_version') ORDER BY key");
- return createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+ return createHash('sha256').update('roster-tickets-v1:').update(JSON.stringify(rows)).digest('hex');
 }
 
 export async function getInteractiveData(){

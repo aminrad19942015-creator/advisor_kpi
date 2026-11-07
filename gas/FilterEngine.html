@@ -24,7 +24,7 @@ const ReportEngine=(()=>{
   const byPerson=name=>selected(name,filters.advisor)&&(!hasTeam||membership(people.get(name)));
   const campaigns=list(filters.campaign),linked=new Set(data.leads.filter(r=>campaigns.includes(r[2])&&r[1]).map(r=>r[1]));
   const inCampaign=(r,source)=>!campaigns.length||source==='ticket'||(source==='lead'?campaigns.includes(r[2]):linked.has(r[1]));
-  const select=(rows,source,person=true)=>rows.filter(r=>(!person||byPerson(r[0]))&&inCampaign(r,source));
+  const select=(rows,source,person=true)=>rows.filter(r=>(source!=='ticket'||people.has(r[0]))&&(!person||byPerson(r[0]))&&inCampaign(r,source));
   const L=select(data.leads,'lead'),O=select(data.opps,'opp'),C=select(data.calls,'call'),T=select(data.tickets,'ticket');
   const days=[...new Set([...L.map(r=>r[7]),...O.map(r=>r[4]),...C.map(r=>r[4]),...T.map(r=>r[3])].filter(Boolean))].sort(),dayCount=Math.max(1,days.length);
   const advisorMap=new Map(),ensure=raw=>{

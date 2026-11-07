@@ -30,6 +30,8 @@ function table(period:string,type:'lead'|'opp'|'call'|'ticket'){
 }
 function whereFor(filters:any,source:'lead'|'opp'|'call'|'ticket',period?:string,outerAlias?:string){
  filters=filters||{};const args:any[]=[];const person=source==='lead'?'owner':source==='opp'?'creator':source==='call'?'"user"':'owner';let where=' WHERE 1=1';
+ // Ticket KPIs, trends, drilldowns and exports share the Admin-defined roster.
+ if(source==='ticket')where+=' AND owner IN (SELECT name FROM team_members)';
  const advisors=norm(filters.advisor);if(advisors.length)where+=sqlIn(person,advisors,args);
  const campaigns=norm(filters.campaign);
  if(campaigns.length){

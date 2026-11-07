@@ -86,6 +86,23 @@ test('attendance restores talked + T8 + AML + tickets >= 5 and preserves campaig
  assert.ok(!attendance.sql.includes('weekly_opportunities'));
 });
 
+test('all ticket SQL reads retain roster scope including explicit outside-advisor requests and exports',async()=>{
+ const {api,statements}=load();
+ for(const period of ['daily','weekly','monthly','reportMonth']){
+  await api.getFilteredPeriodSummary(period,{});
+  const ticketQueries=statements.splice(0).filter(s=>/FROM (daily|weekly|monthly|report_month)_tickets/.test(s.sql));
+  assert.ok(ticketQueries.length>=8);
+  for(const s of ticketQueries)assert.match(s.sql,/owner IN \(SELECT name FROM team_members\)/);
+  for(const read of [
+   ()=>api.getActivityDetails(period,'ticket','outside',{}),
+   ()=>api.getPeriodKpiDetails(period,'tickets',{advisor:['outside']}),
+   ()=>api.getDimensionDetails(period,'ticket','contactTopic','topic',{}),
+   ()=>api.getDimensionDetails(period,'ticket','statusReason','closed',{}),
+   ()=>api.getPeriodExportChunk(period,'tickets',{},0,100)
+  ]){await read();assert.match(statements.at(-1).sql,/owner IN \(SELECT name FROM team_members\)/);}
+ }
+});
+
 test('AML drilldowns accept both advisor and KPI routes; ordinary and repeated calls exclude AML',async()=>{
  const {api,statements}=load();
  for(const period of ['daily','weekly','monthly','reportMonth']){

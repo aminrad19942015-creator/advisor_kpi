@@ -18,6 +18,28 @@ test('browser report preserves AML, repeated calls, attendance, and ticket campa
  assert.equal(filtered.kpis.talked,0);assert.equal(filtered.kpis.calls,0);assert.equal(filtered.kpis.tickets,1);assert.equal(filtered.advisors[0].attendanceDays,0);
  assert.equal(api.period(f,{team:['missing']}).kpis.tickets,0);
 });
+test('tickets only count current roster members across periods, dimensions, trends and filters',()=>{
+ const {api}=engine();
+ for(const period of ['daily','weekly','monthly','reportMonth']){
+  const f=facts();f.period=period;
+  f.tickets.push(['outside','بسته','خارج از تیم','2099-01-01'],['','بسته','بدون مالک','2099-01-02'],[null,'بسته','بدون مالک','2099-01-03']);
+  const baseline=api.period(facts());const actual=api.period(f);
+  assert.equal(actual.kpis.tickets,1);
+  assert.equal(actual.kpis.total,baseline.kpis.total);
+  assert.equal(actual.days.includes('2099-01-01'),false);
+  assert.equal(actual.dimensions.ticketSubject.some(([label])=>label==='خارج از تیم'),false);
+  for(const key of ['trend','teamTrend','unitTrend'])assert.equal(actual[key].reduce((n,r)=>n+r.tickets,0),1);
+  for(const filters of [{advisor:['outside']},{team:['missing']},{role:['missing']}])assert.equal(api.period(f,filters).kpis.tickets,0);
+  assert.equal(api.period(f,{campaign:['missing']}).kpis.tickets,1);
+  // Roster changes, without reimporting tickets, control eligibility.
+  f.members.push({name:'outside',team:'two',role:'مشاور'});
+  assert.equal(api.period(f).kpis.tickets,2);
+  assert.equal(api.period(f,{team:['two']}).kpis.tickets,1);
+  f.members=[];
+  assert.equal(api.period(f).kpis.tickets,0);
+ }
+});
+
 test('interactive payload is memory-only, revision-bound, and expires without authoritative heartbeat',async()=>{
  const {create}=engine();let now=1000000;const c=create({now:()=>now});
  const payload={meta:{generatedAt:new Date(now).toISOString()},team:{rows:[{name:'A',role:'مشاور'}]},interactive:{revision:'r1',encoding:'gzip-base64',body:gzipSync(JSON.stringify({periods:{weekly:facts()},open:{members:[],rows:[],sourceStatus:{source:'test'}}})).toString('base64')}};
