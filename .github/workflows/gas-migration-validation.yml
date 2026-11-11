@@ -81,6 +81,7 @@ jobs:
 
       - name: Validate previous-month connector
         run: |
+          node --test connector/test-crm-read.js
           node --check connector/persian-month.js
           node --check connector/report-month-sync.js
           node connector/test-persian-month.js

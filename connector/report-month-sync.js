@@ -7,6 +7,7 @@ const {loadCrmConfig}=require('./config-client');
 const {writeSnapshot}=require('./local-backup');
 const {dashboardRequest}=require('./dashboard-http');
 const {previousPersianMonthRange}=require('./persian-month');
+const {createPagedReader,readTimeRange}=require('./crm-read');
 require('dotenv').config({path:path.join(__dirname,'.env.local')});
 
 let CRM_ORIGIN='https://mxrm.emofid.com';
@@ -73,34 +74,22 @@ async function authenticate(page){
 }
 
 async function fetchPaged(page,label,url){
-  const all=[];
-  let n=0;
-  while(url){
-    const result=await page.evaluate(async requestUrl=>{
+  const read=createPagedReader({request:requestUrl=>page.evaluate(async requestUrl=>{
+    const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),90000);
+    try{
       const r=await fetch(requestUrl,{
+        signal:controller.signal,
         credentials:'include',
         headers:{
           Accept:'application/json',
-          Prefer:'odata.include-annotations="OData.Community.Display.V1.FormattedValue,Microsoft.Dynamics.CRM.lookuplogicalname"'
+          Prefer:'odata.maxpagesize=1000,odata.include-annotations="OData.Community.Display.V1.FormattedValue,Microsoft.Dynamics.CRM.lookuplogicalname"'
         }
       });
-      return {status:r.status,text:await r.text()};
-    },url);
-    if(result.status!==200){
-      throw new Error(label+' CRM read failed HTTP '+result.status+': '+result.text.slice(0,700));
-    }
-    const data=JSON.parse(result.text),rows=data.value||[];
-    all.push(...rows);
-    n++;
-    console.log(label+' page '+n+': '+rows.length+' - total '+all.length);
-    if(data['@odata.nextLink']){
-      const u=new URL(data['@odata.nextLink']);
-      url=u.pathname+u.search;
-    }else{
-      url=null;
-    }
-  }
-  return all;
+      return {status:r.status,text:await r.text(),retryAfter:r.headers.get('retry-after')};
+    }catch(error){return {status:0,text:'CRM network request failed'};}
+    finally{clearTimeout(timer);}
+  },requestUrl)});
+  return read(label,url);
 }
 
 async function getLeadSourceCaseDirectory(page,rows,label){
@@ -286,12 +275,10 @@ async function fetchCalls(page,range,label,userDirectory,callConfig){
   ].join(',');
   const dateField=String(callConfig?.dateField||'scheduledstart');
   const entity=String(callConfig?.entity||'phonecalls');
-  const filter=`${dateField} ge ${range.start} and ${dateField} lt ${range.end}`;
-  const raw=await fetchPaged(
-    page,
-    label,
-    CRM_API_PREFIX+'/'+entity+'?$select='+select+'&$filter='+encodeURIComponent(filter)
-  );
+  const raw=await readTimeRange({
+    read:(partLabel,url)=>fetchPaged(page,partLabel,url),label,range,idField:'activityid',
+    buildUrl:part=>CRM_API_PREFIX+'/'+entity+'?$select='+select+'&$filter='+encodeURIComponent(`${dateField} ge ${part.start} and ${dateField} lt ${part.end}`)
+  });
   const regardingLeadDirectory=await getRegardingLeadDirectory(page,raw,label);
   const allowedUnits=new Set((callConfig?.businessUnits||[]).map(normalizeFa));
 

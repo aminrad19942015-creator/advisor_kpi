@@ -11,11 +11,12 @@ $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument ('/c ""' + $runCm
 # on Persian day 20 or later when that month's previous-month snapshot is not current.
 $trigger = New-ScheduledTaskTrigger -Daily -At "15:30"
 $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 15)
 
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 
 Write-Host "Scheduled task installed: $taskName"
 Write-Host "Check time: daily at 15:30 Tehran/company-PC time."
 Write-Host "CRM fetch rule: Persian day >= 20 AND previous-Persian-month report is not already current."
+Write-Host "On failure: up to three additional attempts, 15 minutes apart."
 Write-Host "Existing 07:00 / 09:00 / 12:00 / 15:00 tasks were not modified."

@@ -19,6 +19,9 @@ if (([datetime]$trigger.StartBoundary).Second -ne 0) {
 if (-not $task.Settings.StartWhenAvailable) {
   throw "$taskName must have StartWhenAvailable enabled."
 }
+if ($task.Settings.RestartCount -ne 3 -or $task.Settings.RestartInterval -ne 'PT15M') {
+  throw "$taskName must retry failed runs three times at 15-minute intervals."
+}
 if ($task.State -eq "Disabled") {
   throw "$taskName is disabled."
 }

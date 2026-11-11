@@ -32,3 +32,13 @@ The one-time `--bootstrap` stage generates an owner-run `ownerSetupOnce` functio
 `node ops/verify-google-postgres.cjs` verifies private Drive permissions, unsigned-request rejection, local diagnostics, and a real signed Google queue request handled by the local worker. It prints only aggregate counts and sync metadata.
 
 Connector endpoints must use `http://127.0.0.1:3010` on this workstation. `configure-connector-local-gateway.ps1` permits unencrypted HTTP only on loopback; external endpoints still require HTTPS. Open Leads runs Saturday–Thursday at 07:00, 09:00, 12:00 and 15:00; Activity runs at 07:30. The previous-month guard runs daily at 15:30 and contacts CRM only when its Persian-calendar rule permits it.
+
+The previous-month report reader retries transient CRM page failures up to three
+attempts. Calls are queried in consecutive exclusive-end daily windows; a window
+that still times out is recursively split down to at most one hour. Stable CRM
+activity IDs prevent duplicate calls across windows. Authentication and malformed
+responses fail without publishing partial data. Task Scheduler retries failed
+report runs up to three times, 15 minutes apart. For an authorized manual refresh,
+run `connector/run-month-report.ps1 -Force`; it retains the global Connector mutex
+and the existing atomic publication checks. Permanent CRM outages can still fail
+the run; the last complete published report remains intact.

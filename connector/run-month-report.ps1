@@ -1,3 +1,4 @@
+param([switch]$Force)
 $ErrorActionPreference = "Stop"
 $connectorDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $connectorDir
@@ -32,7 +33,12 @@ if (-not $hasMutex) {
 
 try {
   Write-RunLog "Previous Persian-month report check started."
-  & node (Join-Path $connectorDir "report-month-sync.js") >> $logFile 2>&1
+  $nodeArgs = @((Join-Path $connectorDir "report-month-sync.js"))
+  if ($Force) { $nodeArgs += '--force' }
+  & node @nodeArgs 2>&1 | ForEach-Object {
+    Add-Content -LiteralPath $logFile -Value ([string]$_) -Encoding UTF8
+    Write-Host ([string]$_)
+  }
   if ($LASTEXITCODE -ne 0) {
     throw "Previous-month report sync failed with exit code $LASTEXITCODE."
   }
