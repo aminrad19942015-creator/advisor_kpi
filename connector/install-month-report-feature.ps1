@@ -6,12 +6,14 @@ if (-not (Test-Path ".env.local") -or -not (Test-Path "package.json")) {
   throw "Run this installer from the real advisor_kpi connector folder."
 }
 
-$pin = "15b1ba6aaac5eda86d8d8be3c1f981b18d9781d9"
+$pin = "b48bf616202ffe14cda225fcad87dd5dbffe92d0"
 $base = "https://raw.githubusercontent.com/aminrad19942015-creator/advisor_kpi/$pin/connector"
 $files = @(
   "persian-month.js",
   "test-persian-month.js",
   "report-month-sync.js",
+  "crm-read.js",
+  "test-crm-read.js",
   "run-month-report.ps1",
   "run-month-report.cmd",
   "install-month-report-schedule.ps1",
@@ -32,6 +34,8 @@ Write-Host ""
 Write-Host "[1/3] Persian month boundary test..."
 & node ".\test-persian-month.js"
 if ($LASTEXITCODE -ne 0) { throw "Persian month range test failed." }
+& node --test ".\test-crm-read.js"
+if ($LASTEXITCODE -ne 0) { throw "CRM retry and range-boundary tests failed." }
 
 Write-Host ""
 Write-Host "[2/3] Installing the independent monthly-report task..."
