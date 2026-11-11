@@ -6,7 +6,7 @@ if (-not (Test-Path ".env.local") -or -not (Test-Path "package.json")) {
   throw "Run this installer from the real advisor_kpi connector folder."
 }
 
-$pin = "a5962349fa5400f4151bfab5d626250611f463b4"
+$pin = "14cf436"
 $base = "https://raw.githubusercontent.com/aminrad19942015-creator/advisor_kpi/$pin/connector"
 $files = @(
   "persian-month.js",
