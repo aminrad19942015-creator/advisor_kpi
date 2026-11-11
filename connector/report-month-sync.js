@@ -8,6 +8,7 @@ const {writeSnapshot}=require('./local-backup');
 const {dashboardRequest}=require('./dashboard-http');
 const {previousPersianMonthRange}=require('./persian-month');
 const {createPagedReader,readTimeRange}=require('./crm-read');
+const {createCheckpoint}=require('./month-report-checkpoint');
 require('dotenv').config({path:path.join(__dirname,'.env.local')});
 
 let CRM_ORIGIN='https://mxrm.emofid.com';
@@ -267,7 +268,7 @@ async function getRegardingLeadDirectory(page,rows,label){
   return map;
 }
 
-async function fetchCalls(page,range,label,userDirectory,callConfig){
+async function fetchCalls(page,range,label,userDirectory,callConfig,checkpoint){
   const select=[
     'activityid','subject','_ms_partyuserid_value','_ms_callqueueid_value','scheduledstart','actualstart',
     '_ms_partycontactid_value','_regardingobjectid_value','ms_tophonenumber','phonenumber',
@@ -275,12 +276,13 @@ async function fetchCalls(page,range,label,userDirectory,callConfig){
   ].join(',');
   const dateField=String(callConfig?.dateField||'scheduledstart');
   const entity=String(callConfig?.entity||'phonecalls');
+  const allowedUnits=new Set((callConfig?.businessUnits||[]).map(normalizeFa));
   const raw=await readTimeRange({
     read:(partLabel,url)=>fetchPaged(page,partLabel,url),label,range,idField:'activityid',
+    accept:row=>allowedUnits.has(normalizeFa(userDirectory.get(String(row._ms_partyuserid_value||'').toLowerCase())?.businessUnit)),checkpoint,
     buildUrl:part=>CRM_API_PREFIX+'/'+entity+'?$select='+select+'&$filter='+encodeURIComponent(`${dateField} ge ${part.start} and ${dateField} lt ${part.end}`)
   });
   const regardingLeadDirectory=await getRegardingLeadDirectory(page,raw,label);
-  const allowedUnits=new Set((callConfig?.businessUnits||[]).map(normalizeFa));
 
   return raw
     .filter(row=>{
@@ -515,6 +517,12 @@ function writeStatus(status){
     const oppConfig=crmConfig.opportunity||{};
     const callConfig=crmConfig.calls||{};
     const ticketConfig=crmConfig.ticket||{};
+    const checkpoint=createCheckpoint(path.join(runtimeDir,'month-report-checkpoints'),{version:2,range,crmConfig});
+    const stage=async(key,fetch)=>{
+      const cached=checkpoint.read(key);
+      if(cached!=null){console.log('Resuming completed source: '+key+' ('+cached.length+' rows)');return cached;}
+      const rows=await fetch();checkpoint.write(key,rows);return rows;
+    };
     const enabled=[
       ['Lead',leadConfig],
       ['Opportunity',oppConfig],
@@ -538,16 +546,16 @@ function writeStatus(status){
       await authenticate(page);
       const users=await getCallUserDirectory(page);
 
-      const leads=await fetchLeads(page,range,'Previous-month leads',leadConfig);
-      const opportunities=await fetchOpportunities(
+      const leads=await stage('leads',()=>fetchLeads(page,range,'Previous-month leads',leadConfig));
+      const opportunities=await stage('opportunities',()=>fetchOpportunities(
         page,range,'Previous-month opportunities',oppConfig
-      );
-      const calls=await fetchCalls(
-        page,range,'Previous-month calls',users,callConfig
-      );
-      const tickets=await fetchTickets(
+      ));
+      const calls=await stage('calls',()=>fetchCalls(
+        page,range,'Previous-month calls',users,callConfig,checkpoint
+      ));
+      const tickets=await stage('tickets',()=>fetchTickets(
         page,range,'Previous-month tickets',ticketConfig
-      );
+      ));
 
       const datasets={
         report_month_leads:leads,
@@ -586,6 +594,7 @@ function writeStatus(status){
         stored:result.counts
       });
 
+      try{checkpoint.clear();}catch(error){console.log('Published report verified; temporary checkpoint cleanup will be retried later.');}
       console.log('');
       console.log('=== CRM PREVIOUS MONTH REPORT SYNC SUCCESS ===');
       console.log('Report:',range.label,'['+range.reportKey+']');

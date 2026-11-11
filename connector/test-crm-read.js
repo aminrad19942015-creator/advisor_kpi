@@ -47,3 +47,18 @@ test('malformed and cross-origin pagination cannot silently publish partial data
   const read=createPagedReader({request:async()=>result,log:()=>{}});await assert.rejects(read('calls','/url'));
  }
 });
+test('interrupted reads resume completed windows, filter unrelated units early and expire safely',async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{createCheckpoint}=require('./month-report-checkpoint');
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'advisor-month-checkpoint-'));let now=1000,calls=0;
+ try{
+  const checkpoint=createCheckpoint(directory,{period:'1405-07',config:'one'},{now:()=>now,maxAgeMs:100});
+  const options={label:'calls',range:{start:'2026-09-22T20:30:00Z',end:'2026-09-24T20:30:00Z'},idField:'id',buildUrl:r=>r,checkpoint,log:()=>{},accept:r=>r.unit==='allowed'};
+  await assert.rejects(readTimeRange({...options,read:async(_,r)=>{if(++calls===2)throw new Error('process interrupted');return [{id:r.start,unit:'allowed'},{id:'other',unit:'excluded'}];}}));
+  calls=0;const rows=await readTimeRange({...options,read:async(_,r)=>{calls++;return [{id:r.start,unit:'allowed'}];}});
+  assert.equal(calls,1);assert.equal(rows.length,2);assert.ok(rows.every(r=>r.unit==='allowed'));
+  checkpoint.write('source',[]);assert.deepEqual(checkpoint.read('source'),[]);
+  assert.equal(createCheckpoint(directory,{period:'1405-07',config:'changed'},{now:()=>now}).read('source'),null);
+  now=1200;assert.equal(checkpoint.read('source'),null);
+  checkpoint.clear();assert.equal(fs.readdirSync(directory).length,0);
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});

@@ -35,12 +35,17 @@ try {
   Write-RunLog "Previous Persian-month report check started."
   $nodeArgs = @((Join-Path $connectorDir "report-month-sync.js"))
   if ($Force) { $nodeArgs += '--force' }
-  & node @nodeArgs 2>&1 | ForEach-Object {
-    Add-Content -LiteralPath $logFile -Value ([string]$_) -Encoding UTF8
-    Write-Host ([string]$_)
+  $stdout = Join-Path $runtimeDir 'month-report-current.stdout.log'
+  $stderr = Join-Path $runtimeDir 'month-report-current.stderr.log'
+  $nodeArgs[0] = '"' + $nodeArgs[0] + '"'
+  $process = Start-Process -FilePath (Get-Command node.exe).Source -ArgumentList $nodeArgs -WorkingDirectory $connectorDir -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+  $process.Handle | Out-Null
+  $process.WaitForExit()
+  foreach ($output in @($stdout,$stderr)) {
+    if (Test-Path -LiteralPath $output) { Get-Content -LiteralPath $output -Encoding UTF8 | Add-Content -LiteralPath $logFile -Encoding UTF8 }
   }
-  if ($LASTEXITCODE -ne 0) {
-    throw "Previous-month report sync failed with exit code $LASTEXITCODE."
+  if ($process.ExitCode -ne 0) {
+    throw "Previous-month report sync failed with exit code $($process.ExitCode). See month-report-current.stderr.log."
   }
   Write-RunLog "Previous Persian-month report check completed successfully."
   exit 0

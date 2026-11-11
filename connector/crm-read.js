@@ -38,14 +38,15 @@ function createPagedReader({request,log=console.log,sleep=ms=>new Promise(r=>set
 
 // A failed later page discards this window before retrying it as smaller windows.
 // Bounds stay [start,end), so no midnight records are lost or counted twice.
-async function readTimeRange({read,buildUrl,label,range,idField,windowMs=86400000,minWindowMs=3600000,log=console.log}){
+async function readTimeRange({read,buildUrl,label,range,idField,windowMs=86400000,minWindowMs=3600000,log=console.log,accept=()=>true,checkpoint}){
  const start=Date.parse(range.start),end=Date.parse(range.end);
  if(!Number.isFinite(start)||!Number.isFinite(end)||start>=end||windowMs<=0||minWindowMs<=0)throw new Error('Invalid CRM time range');
  const rows=[],ids=new Set();
  async function window(a,b){
   const part={start:new Date(a).toISOString(),end:new Date(b).toISOString()};
-  let found;
-  try{found=await read(label+' ['+part.start+' .. '+part.end+')',buildUrl(part));}
+  const key=label+'|'+part.start+'|'+part.end;
+  let found=checkpoint?.read(key);
+  try{if(found==null){found=(await read(label+' ['+part.start+' .. '+part.end+')',buildUrl(part))).filter(accept);checkpoint?.write(key,found);}else log(label+': resuming completed window '+part.start);}
   catch(error){
    if(!error.splittable||b-a<=minWindowMs)throw error;
    const mid=a+Math.floor((b-a)/2);
@@ -53,6 +54,7 @@ async function readTimeRange({read,buildUrl,label,range,idField,windowMs=8640000
    await window(a,mid);await window(mid,b);return;
   }
   for(const row of found){
+   if(!accept(row))continue;
    const id=String(row[idField]||'').toLowerCase();
    if(!id)throw new Error(label+': CRM row is missing '+idField);
    if(!ids.has(id)){ids.add(id);rows.push(row);}
