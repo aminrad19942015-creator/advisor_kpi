@@ -12,6 +12,12 @@ import {
   getCrmActivityStatus,
   startCrmActivityBatch
 } from './crm-activity.ts';
+import {
+  appendCrmMonthReportChunk,
+  finalizeCrmMonthReportBatch,
+  getCrmMonthReportStatus,
+  startCrmMonthReportBatch
+} from './crm-month-report.ts';
 import { getCrmAdminConfig } from './crm-config.ts';
 import { tursoBatch, tursoSelect } from './turso.ts';
 
@@ -120,6 +126,28 @@ async function handleActivity(req:Request){
   return json({ok:false,error:'Unknown CRM activity action.'},400);
 }
 
+async function handleMonthReport(req:Request){
+  if(req.method==='GET')return json({ok:true,status:await getCrmMonthReportStatus()});
+  if(req.method!=='POST')return json({ok:false,error:'Method not allowed.'},405);
+
+  const body=await req.json();
+  const action=String(body?.action||'');
+  if(action==='start')return json({ok:true,...await startCrmMonthReportBatch()});
+  if(action==='chunk')return json({ok:true,...await appendCrmMonthReportChunk(
+    String(body?.batchId||''),
+    String(body?.dataset||''),
+    Number(body?.seq),
+    body?.rows
+  )});
+  if(action==='finalize')return json({ok:true,...await finalizeCrmMonthReportBatch(
+    String(body?.batchId||''),
+    body?.expected,
+    body?.sourceCheckedAt?String(body.sourceCheckedAt):undefined,
+    body?.range
+  )});
+  return json({ok:false,error:'Unknown CRM month-report action.'},400);
+}
+
 async function handleConfig(req:Request){
   if(req.method!=='GET')return json({ok:false,error:'Method not allowed.'},405);
   return json({ok:true,config:await getCrmAdminConfig()});
@@ -167,12 +195,13 @@ Deno.serve(async (req:Request)=>{
       return json({
         ok:true,
         service:'connector-api',
-        version:2,
-        routes:['crm-shadow','crm-activity','crm-config','connector-command']
+        version:5,
+        routes:['crm-shadow','crm-activity','crm-month-report','crm-config','connector-command']
       });
     }
     if(route==='crm-shadow')return await handleShadow(req);
     if(route==='crm-activity')return await handleActivity(req);
+    if(route==='crm-month-report')return await handleMonthReport(req);
     if(route==='crm-config')return await handleConfig(req);
     if(route==='connector-command')return await handleCommand(req);
     return json({ok:false,error:'Unknown connector route.'},404);

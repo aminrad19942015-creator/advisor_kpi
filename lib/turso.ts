@@ -12,8 +12,8 @@ export type DatabaseStatement={sql:string,args?:unknown[]};
 export type TursoStatement=DatabaseStatement;
 
 function pgClient(){
- const url=process.env.SUPABASE_DATABASE_URL;
- if(!url) throw new Error('SUPABASE_DATABASE_URL is not configured.');
+ const url=process.env.DATABASE_URL||process.env.SUPABASE_DATABASE_URL;
+ if(!url) throw new Error('DATABASE_URL is not configured.');
  return postgres(url,{max:1,idle_timeout:5,connect_timeout:10,max_lifetime:60,prepare:false});
 }
 
@@ -61,7 +61,7 @@ async function postgresBatch(statements:DatabaseStatement[]):Promise<any[][]>{
  }
 }
 
-export function databaseProvider(){return 'Supabase';}
+export function databaseProvider(){return 'PostgreSQL';}
 
 export async function tableColumns(table:string):Promise<string[]>{
  const r=await postgresBatch([{

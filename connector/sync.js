@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 const { loadCrmConfig } = require('./config-client');
 const { writeSnapshot } = require('./local-backup');
 const { processPendingCommand } = require('./command-client');
-const { dashboardRequest } = require('./dashboard-http');
+const { uploadDatasets } = require('./upload-client');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 
 let CRM_ORIGIN = 'https://mxrm.emofid.com';
@@ -166,38 +166,16 @@ function normalize(rows) {
   }));
 }
 
-async function api(body) {
-  const response = await dashboardRequest(API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-crm-connector-token': connectorToken
-    },
-    body: JSON.stringify(body),
-    timeoutMs: 60000
-  });
-  if (!response.ok) throw new Error('Dashboard API HTTP ' + response.status + ': ' + response.text);
-  return JSON.parse(response.text);
-}
-
 async function pushShadow(rows, sourceCheckedAt) {
-  const start = await api({ action: 'start' });
-  const batchId = start.batchId;
-  const chunkSize = start.maxChunkRows || 400;
-
-  let seq = 0;
-  for (let i = 0; i < rows.length; i += chunkSize) {
-    const chunk = rows.slice(i, i + chunkSize);
-    await api({ action: 'chunk', batchId, seq, rows: chunk });
-    console.log('Uploaded chunk ' + (seq + 1) + ': ' + chunk.length + ' rows');
-    seq++;
-  }
-
-  return api({
-    action: 'finalize',
-    batchId,
-    expectedRows: rows.length,
-    sourceCheckedAt
+  return uploadDatasets({
+    url: API_URL,
+    token: connectorToken,
+    datasets: { open_leads: rows },
+    finalize: {
+      expectedRows: rows.length,
+      sourceCheckedAt
+    },
+    label: 'Dashboard shadow API'
   });
 }
 

@@ -1,18 +1,19 @@
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet("Morning","Open")]
+  [ValidateSet("Activity","Open")]
   [string]$Mode
 )
 
 $ErrorActionPreference = "Stop"
 $connectorDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $connectorDir
+$nodePath = (Get-Command node.exe -ErrorAction Stop).Source
 
 $runtimeDir = Join-Path $connectorDir "runtime"
 New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
 
-$logFile = if ($Mode -eq "Morning") {
-  Join-Path $runtimeDir "morning-sync.log"
+$logFile = if ($Mode -eq "Activity") {
+  Join-Path $runtimeDir "activity-sync.log"
 } else {
   Join-Path $runtimeDir "scheduled-sync.log"
 }
@@ -21,6 +22,18 @@ function Write-RunLog([string]$Message) {
   $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message
   Add-Content -LiteralPath $logFile -Value $line -Encoding UTF8
   Write-Host $line
+}
+
+function Invoke-ConnectorScript([string]$Name) {
+  $previousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    & $nodePath (Join-Path $connectorDir $Name) 2>&1 | ForEach-Object {
+      [IO.File]::AppendAllText($logFile, ([string]$_ + [Environment]::NewLine), [Text.UTF8Encoding]::new($false))
+    }
+    $nativeExit = $LASTEXITCODE
+  } finally { $ErrorActionPreference = $previousPreference }
+  return [int]$nativeExit
 }
 
 function Test-ComponentFreshToday([string]$FileName) {
@@ -42,9 +55,9 @@ function Test-ComponentFreshToday([string]$FileName) {
 
 function Invoke-OpenLeads {
   Write-RunLog "Open Leads sync started."
-  & cmd.exe /d /c "npm run sync" >> $logFile 2>&1
-  if ($LASTEXITCODE -ne 0) {
-    throw "Open Leads sync failed with exit code $LASTEXITCODE."
+  $code = Invoke-ConnectorScript 'sync.js'
+  if ($code -ne 0) {
+    throw "Open Leads sync failed with exit code $code."
   }
   Write-RunLog "Open Leads sync completed successfully."
 }
@@ -62,10 +75,10 @@ function Invoke-ActivityRecovery {
   if ($ForceAll -or -not $leadOppFresh) {
     $ranAny = $true
     Write-RunLog "Lead/Opportunity activity sync started."
-    & node (Join-Path $connectorDir "lead-opportunity-sync.js") >> $logFile 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    $code = Invoke-ConnectorScript 'lead-opportunity-sync.js'
+    if ($code -ne 0) {
       $componentFailures += "Lead/Opportunity"
-      Write-RunLog "Lead/Opportunity history FAILED with exit code $LASTEXITCODE. Continuing."
+      Write-RunLog "Lead/Opportunity history FAILED with exit code $code. Continuing."
     } else {
       Write-RunLog "Lead/Opportunity history completed."
     }
@@ -76,10 +89,10 @@ function Invoke-ActivityRecovery {
   if ($ForceAll -or -not $callsFresh) {
     $ranAny = $true
     Write-RunLog "Calls activity sync started."
-    & node (Join-Path $connectorDir "calls-sync.js") >> $logFile 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    $code = Invoke-ConnectorScript 'calls-sync.js'
+    if ($code -ne 0) {
       $componentFailures += "Calls"
-      Write-RunLog "Calls history FAILED with exit code $LASTEXITCODE. Continuing."
+      Write-RunLog "Calls history FAILED with exit code $code. Continuing."
     } else {
       Write-RunLog "Calls history completed."
     }
@@ -90,10 +103,10 @@ function Invoke-ActivityRecovery {
   if ($ForceAll -or -not $ticketsFresh) {
     $ranAny = $true
     Write-RunLog "Tickets activity sync started."
-    & node (Join-Path $connectorDir "tickets-sync.js") >> $logFile 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    $code = Invoke-ConnectorScript 'tickets-sync.js'
+    if ($code -ne 0) {
       $componentFailures += "Tickets"
-      Write-RunLog "Tickets history FAILED with exit code $LASTEXITCODE."
+      Write-RunLog "Tickets history FAILED with exit code $code."
     } else {
       Write-RunLog "Tickets history completed."
     }
@@ -134,24 +147,28 @@ if (-not $hasMutex) {
 }
 
 try {
-  if ($Mode -eq "Morning") {
-    Write-RunLog "Morning sync started: Open Leads first, then activity components."
-    Invoke-OpenLeads
+  if ($Mode -eq "Activity") {
+    Write-RunLog "07:30 Activity sync started: Lead/Opportunity, Calls and Tickets."
     Invoke-ActivityRecovery -ForceAll
-    Write-RunLog "Morning sync completed successfully."
+    Write-RunLog "Activity sync completed successfully."
     exit 0
   }
 
-  Write-RunLog "Intraday Open Leads trigger started."
+  Write-RunLog "Open Leads trigger started."
   Invoke-OpenLeads
 
-  # If the PC was off at 07:00 or the Morning task lost the mutex race,
-  # recover only activity components that do not have a successful run today.
-  if ((Get-Date).Hour -ge 7) {
+  # 07:00 is reserved for Open Leads. Activity starts at 07:30.
+  # If the 07:30 task was missed (PC off / mutex race), later Open Leads
+  # triggers recover only stale activity components.
+  $now = Get-Date
+  $activityRecoveryStart = $now.Date.AddHours(7).AddMinutes(30)
+  if ($now -ge $activityRecoveryStart) {
     Invoke-ActivityRecovery
+  } else {
+    Write-RunLog "Activity recovery window starts at 07:30; skipped for this Open Leads run."
   }
 
-  Write-RunLog "Intraday trigger completed successfully."
+  Write-RunLog "Open Leads trigger completed successfully."
   exit 0
 }
 catch {

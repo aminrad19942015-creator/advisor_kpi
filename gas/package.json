@@ -1,0 +1,13 @@
+{
+  "name": "advisor-kpi-gas-tools",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "login": "clasp login",
+    "check": "node ../ops/validate-gas.cjs",
+    "deploy": "node ../ops/deploy-gas.cjs",
+    "plan": "node ../ops/deploy-gas.cjs --plan",
+    "test": "node --test ../ops/test-gas-deploy.cjs"
+  },
+  "devDependencies": { "@google/clasp": "3.4.1" }
+}
