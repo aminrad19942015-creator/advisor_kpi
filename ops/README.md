@@ -42,3 +42,13 @@ report runs up to three times, 15 minutes apart. For an authorized manual refres
 run `connector/run-month-report.ps1 -Force`; it retains the global Connector mutex
 and the existing atomic publication checks. Permanent CRM outages can still fail
 the run; the last complete published report remains intact.
+
+Completed monthly source reads and daily call windows are checkpointed locally for
+six hours under ignored connector/runtime/month-report-checkpoints. Retries reuse
+those windows with the same range/configuration, and successful publication clears
+them. Only calls in configured business units are retained for related-lead lookup.
+The authenticated local ingest route is /api/crm-month-report. Configure
+DASHBOARD_MONTH_REPORT_API_URL explicitly when the updated API runs on a separate
+local reader (this workstation: http://127.0.0.1:3012/api/crm-month-report).
+The report checks endpoint availability before opening CRM. Child stdout/stderr
+are recorded separately in connector/runtime/month-report-current.*.log.

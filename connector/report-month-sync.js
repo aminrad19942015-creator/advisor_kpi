@@ -440,7 +440,7 @@ async function remoteStatus(){
     headers:{'x-crm-connector-token':connectorToken},
     timeoutMs:60000
   });
-  if(!r.ok)throw new Error('Month-report status HTTP '+r.status+': '+r.text);
+  if(!r.ok)throw new Error('Month-report status HTTP '+r.status+': '+r.text.slice(0,300));
   const body=JSON.parse(r.text);
   return body?.status||{};
 }
@@ -493,7 +493,7 @@ function writeStatus(status){
       return;
     }
 
-    const status=await remoteStatus().catch(()=>({}));
+    const status=await remoteStatus();
     if(!force&&status?.period===range.reportKey&&status?.lastSyncAt){
       console.log('MONTH_REPORT_ALREADY_CURRENT:',range.reportKey,status.lastSyncAt);
       writeStatus({
