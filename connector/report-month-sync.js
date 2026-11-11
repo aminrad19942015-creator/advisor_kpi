@@ -15,7 +15,7 @@ let CRM_ORIGIN='https://mxrm.emofid.com';
 let CRM_API_PREFIX='/api/data/v9.0';
 const shadowUrl=process.env.DASHBOARD_API_URL||'https://tdsqkxyqmebyufcmskkm.supabase.co/functions/v1/connector-api/crm-shadow';
 const activityUrl=process.env.DASHBOARD_ACTIVITY_API_URL||shadowUrl.replace(/\/crm-shadow\/?$/,'/crm-activity');
-const API_URL=activityUrl.replace(/\/crm-activity\/?$/,'/crm-month-report');
+const API_URL=process.env.DASHBOARD_MONTH_REPORT_API_URL||activityUrl.replace(/\/crm-activity\/?$/,'/crm-month-report');
 const username=(process.env.CRM_USERNAME||'').trim();
 const password=process.env.CRM_PASSWORD||'';
 const connectorToken=process.env.CRM_CONNECTOR_TOKEN;
@@ -423,7 +423,7 @@ async function api(body){
         body:JSON.stringify(body),
         timeoutMs:60000
       });
-      if(!r.ok)throw new Error('Month-report API HTTP '+r.status+': '+r.text);
+      if(!r.ok)throw new Error('Month-report API HTTP '+r.status+': '+r.text.slice(0,300));
       return JSON.parse(r.text);
     }catch(e){
       lastError=e;

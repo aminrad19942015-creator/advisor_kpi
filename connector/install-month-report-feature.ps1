@@ -6,13 +6,14 @@ if (-not (Test-Path ".env.local") -or -not (Test-Path "package.json")) {
   throw "Run this installer from the real advisor_kpi connector folder."
 }
 
-$pin = "b48bf616202ffe14cda225fcad87dd5dbffe92d0"
+$pin = "a5962349fa5400f4151bfab5d626250611f463b4"
 $base = "https://raw.githubusercontent.com/aminrad19942015-creator/advisor_kpi/$pin/connector"
 $files = @(
   "persian-month.js",
   "test-persian-month.js",
   "report-month-sync.js",
   "crm-read.js",
+  "month-report-checkpoint.js",
   "test-crm-read.js",
   "run-month-report.ps1",
   "run-month-report.cmd",
@@ -57,3 +58,4 @@ if ($LASTEXITCODE -ne 0) { throw "Initial month-report run failed." }
 
 Write-Host ""
 Write-Host "MONTH_REPORT_INITIAL_RUN_OK"
+
