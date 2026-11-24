@@ -76,7 +76,8 @@ async function authenticate(page) {
     try {
       probe = await page.evaluate(async apiPrefix => {
         const r = await fetch(apiPrefix+'/WhoAmI', {
-          credentials: 'include',
+          signal: AbortSignal.timeout(90000),
+        credentials: 'include',
           headers: { Accept: 'application/json' }
         });
         return { status: r.status, text: await r.text() };
@@ -114,6 +115,7 @@ async function fetchOpenLeads(page,entity='leads') {
   while (url) {
     const result = await page.evaluate(async requestUrl => {
       const r = await fetch(requestUrl, {
+        signal: AbortSignal.timeout(90000),
         credentials: 'include',
         headers: {
           Accept: 'application/json',

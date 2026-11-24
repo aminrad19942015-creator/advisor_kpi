@@ -25,17 +25,24 @@ function Write-RunLog([string]$Message) {
 }
 
 function Invoke-ConnectorScript([string]$Name) {
-  $previousPreference = $ErrorActionPreference
+  $stdout = Join-Path $runtimeDir ($Name + '.stdout.log')
+  $stderr = Join-Path $runtimeDir ($Name + '.stderr.log')
+  $minutes = if ($Name -eq 'sync.js') { 20 } else { 45 }
+  $process = Start-Process -FilePath $nodePath -ArgumentList ('"' + (Join-Path $connectorDir $Name) + '"') -WorkingDirectory $connectorDir -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
   try {
-    $ErrorActionPreference = 'Continue'
-    & $nodePath (Join-Path $connectorDir $Name) 2>&1 | ForEach-Object {
-      [IO.File]::AppendAllText($logFile, ([string]$_ + [Environment]::NewLine), [Text.UTF8Encoding]::new($false))
+    $process.Handle | Out-Null
+    if (-not $process.WaitForExit($minutes * 60000)) {
+      & taskkill.exe /PID $process.Id /T /F | Out-Null
+      throw "$Name exceeded $minutes minutes; terminated its process tree to release the connector lock."
     }
-    $nativeExit = $LASTEXITCODE
-  } finally { $ErrorActionPreference = $previousPreference }
-  return [int]$nativeExit
+    return [int]$process.ExitCode
+  } finally {
+    foreach ($file in @($stdout,$stderr)) {
+      if (Test-Path $file) { Get-Content -LiteralPath $file -Encoding UTF8 | Add-Content -LiteralPath $logFile -Encoding UTF8 }
+    }
+    $process.Dispose()
+  }
 }
-
 function Test-ComponentFreshToday([string]$FileName) {
   $file = Join-Path $runtimeDir $FileName
   if (-not (Test-Path $file)) { return $false }
